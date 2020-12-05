@@ -63,7 +63,7 @@ public class MinioUtil implements Configurable {
     private String endpoint;
     private String accessKey;
     private String secretKey;
-    private URI uri;
+    private Path rootPath;
     private MinioClient client;
     private String bucket;
     private Configuration conf;
@@ -79,8 +79,9 @@ public class MinioUtil implements Configurable {
             this.endpoint = conf.get(MinioFileSystem.MINIO_ENDPOINT);
             this.accessKey = conf.get(MinioFileSystem.MINIO_ACCESS_KEY);
             this.secretKey = conf.get(MinioFileSystem.MINIO_SECRET_KEY);
-            this.uri = new URI(conf.get(MinioFileSystem.MINIO_ROOT));
-            this.bucket = this.uri.getHost();
+            URI uri = new URI(conf.get(MinioFileSystem.MINIO_ROOT));
+            this.bucket = uri.getHost();
+            this.rootPath = new Path(uri);
             this.client = MinioClient.builder().
                     endpoint(this.getEndpoint())
                     .credentials(this.accessKey, this.secretKey)
@@ -103,8 +104,8 @@ public class MinioUtil implements Configurable {
         return endpoint;
     }
 
-    public URI getUri() {
-        return uri;
+    public Path getRootPath() {
+        return rootPath;
     }
 
     public FileStatus[] listStatus(Path path) throws FileNotFoundException, IOException {
@@ -151,8 +152,8 @@ public class MinioUtil implements Configurable {
 
             for (Result<Item> result : results) {
                 Item item = result.get();
-                String strItemPath = this.uri + "/" + item.objectName();
-                Path itemPath = new Path(strItemPath);
+                String strItemPath = "/" + item.objectName();
+                Path itemPath = new Path(rootPath, strItemPath);
                 if (path.toUri().equals(itemPath.toUri())) {
                     continue;
                 }
@@ -484,8 +485,8 @@ public class MinioUtil implements Configurable {
                 if (tmp.startsWith("/")) {
                     tmp = tmp.substring(1);
                 }
-                tmp = tmp.replaceFirst("^" + strSrc, strDst);
-                copyItem(fs.getPath(), new Path(tmp));
+                tmp = tmp.replace(strSrc, strDst);
+                copyItem(fs.getPath(), new Path(rootPath, "/" + tmp));
             }
         }
 

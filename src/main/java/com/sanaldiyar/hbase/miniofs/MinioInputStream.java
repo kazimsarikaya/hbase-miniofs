@@ -67,6 +67,8 @@ public class MinioInputStream extends FSInputStream {
     public synchronized void seek(long pos) throws IOException {
         if (bufferStart <= pos && pos <= bufferStart + buffer.length) {
             position = pos;
+            long tmp_off = pos - bufferStart;
+            bufferPosition = (int) tmp_off;
         } else {
             fillBuffer(pos);
         }

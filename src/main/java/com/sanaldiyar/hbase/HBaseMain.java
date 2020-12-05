@@ -25,10 +25,6 @@ import org.apache.hadoop.hbase.regionserver.HRegionServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- *
- * @author kazim
- */
 public class HBaseMain {
 
     private final static Logger logger = LoggerFactory.getLogger(HBaseMain.class.getName());
@@ -53,18 +49,38 @@ public class HBaseMain {
 
         try {
             HRegionServer regionServer = null;
-            if (type.equals("master")) {
-                regionServer = new HMaster(conf);
-            } else if (type.equals("region")) {
-                regionServer = new HRegionServer(conf);
-            } else {
-                logger.error("unknown type");
-                System.exit(-1);
+            switch (type) {
+                case "master":
+                    regionServer = new HMaster(conf);
+                    break;
+                case "region":
+                    regionServer = new HRegionServer(conf);
+                    break;
+                default:
+                    logger.error("unknown type");
+                    System.exit(-1);
             }
             regionServer.start();
+
+            Runtime.getRuntime().addShutdownHook(new Thread(new RegionShutdownHook(regionServer)));
         } catch (IOException e) {
         }
 
+    }
+
+}
+
+class RegionShutdownHook implements Runnable {
+
+    private final HRegionServer regionServer;
+
+    public RegionShutdownHook(HRegionServer regionServer) {
+        this.regionServer = regionServer;
+    }
+
+    @Override
+    public void run() {
+        regionServer.stop("stopping region server");
     }
 
 }
