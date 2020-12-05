@@ -32,10 +32,6 @@ import org.apache.hadoop.fs.UploadHandle;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- *
- * @author kazim
- */
 public class MinioMultipartUploader extends MultipartUploader {
 
     private final static Logger logger = LoggerFactory.getLogger(MultipartUploader.class.getName());
@@ -101,6 +97,7 @@ public class MinioMultipartUploader extends MultipartUploader {
 
 class MinioMultipartUploadHandle implements UploadHandle {
 
+    private static final long serialVersionUID = -7660448616414799918L;
     private final Path path;
     private final Path tmpPath;
 
@@ -127,6 +124,7 @@ class MinioMultipartUploadHandle implements UploadHandle {
 
 class MinioMultipartPartHandle implements PartHandle {
 
+    private static final long serialVersionUID = -3773054562300586561L;
     private final Path partPath;
     private final int partNumber;
 
@@ -152,6 +150,7 @@ class MinioMultipartPartHandle implements PartHandle {
 
 class MinioMultiPartPathHandle implements PathHandle {
 
+    private static final long serialVersionUID = -9162583084891752763L;
     private final Path path;
 
     public MinioMultiPartPathHandle(Path path) {

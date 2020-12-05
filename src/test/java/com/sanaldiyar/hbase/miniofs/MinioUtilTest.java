@@ -29,9 +29,6 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
 import org.apache.hadoop.hbase.util.FSUtils;
-import org.apache.log4j.ConsoleAppender;
-import org.apache.log4j.Level;
-import org.apache.log4j.PatternLayout;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -40,10 +37,6 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- *
- * @author kazim
- */
 public class MinioUtilTest {
 
     private final static MinioUtil minioUtil = MinioUtil.getInstance();
@@ -55,15 +48,6 @@ public class MinioUtilTest {
 
     @BeforeAll
     public static void setUpClass() {
-
-        ConsoleAppender console = new ConsoleAppender(); //create appender
-        //configure the appender
-        String PATTERN = "{} [%p|%c|%C{1}] %m%n";
-        console.setLayout(new PatternLayout(PATTERN));
-        console.setThreshold(Level.DEBUG);
-        console.activateOptions();
-        //add appender to any Logger (here is root)
-        org.apache.log4j.Logger.getRootLogger().addAppender(console);
 
         conf = new Configuration();
         conf.set(MinioFileSystem.MINIO_ENDPOINT, "http://localhost:9000");
@@ -148,6 +132,7 @@ public class MinioUtilTest {
 
             mis = new MinioInputStream(new Path("/test3/subdir/subsubdir/file4"), conf, tmpData.length >> 2);
             int r = mis.read(tmpData);
+            mis.close();
             assert r == data.length;
             assert new String(tmpData, 0, r).equals("ABCDEFGHIJK");
 

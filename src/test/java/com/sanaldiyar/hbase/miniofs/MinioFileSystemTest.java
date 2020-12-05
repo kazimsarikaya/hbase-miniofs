@@ -17,13 +17,12 @@ limitations under the License.
 package com.sanaldiyar.hbase.miniofs;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.log4j.ConsoleAppender;
-import org.apache.log4j.Level;
-import org.apache.log4j.PatternLayout;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -32,10 +31,6 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- *
- * @author kazim
- */
 public class MinioFileSystemTest {
 
     private final static MinioUtil minioUtil = MinioUtil.getInstance();
@@ -50,15 +45,6 @@ public class MinioFileSystemTest {
 
     @BeforeAll
     public static void setUpClass() {
-
-        ConsoleAppender console = new ConsoleAppender(); //create appender
-        //configure the appender
-        String PATTERN = "{} [%p|%c|%C{1}] %m%n";
-        console.setLayout(new PatternLayout(PATTERN));
-        console.setThreshold(Level.DEBUG);
-        console.activateOptions();
-        //add appender to any Logger (here is root)
-        org.apache.log4j.Logger.getRootLogger().addAppender(console);
 
         conf = new Configuration();
         conf.set(MinioFileSystem.MINIO_ENDPOINT, "http://localhost:9000");
@@ -92,6 +78,16 @@ public class MinioFileSystemTest {
     }
 
     @Test
+    public void testGetUri() {
+        try {
+            assert fs.getUri().compareTo(new URI(conf.get(MinioFileSystem.MINIO_ROOT))) == 0;
+        } catch (URISyntaxException ex) {
+            logger.error("error occured while checking uri {}", ex);
+            assert false;
+        }
+    }
+
+    @Test
     public void testRootFileStatus() {
         try {
             FileStatus f_s = fs.getFileStatus(root);
@@ -99,6 +95,43 @@ public class MinioFileSystemTest {
             assert f_s.getPath().isRoot();
         } catch (IOException ex) {
             logger.error("cannot get status", ex);
+            assert false;
+        }
+    }
+
+    @Test
+    public void testCreateDir() {
+        try {
+            Path newDir = new Path(root, "/dir1/subdir1/subdir2");
+            boolean result = fs.mkdirs(newDir, null);
+            assert result;
+            FileStatus[] fileStatuses = fs.listStatus(root, (Path path) -> path.toUri().getPath().startsWith("/dir1"));
+            assert fileStatuses.length == 3;
+
+        } catch (IOException ex) {
+            logger.error("cannot create/check dir", ex);
+            assert false;
+        }
+    }
+
+    @Test
+    public void testAppendFile() {
+        try {
+            fs.append(new Path("/dummy"));
+            assert false;
+        } catch (IOException ex) {
+            assert false;
+        } catch (UnsupportedOperationException ex) {
+            assert true;
+        }
+    }
+
+    @Test
+    public void testDeleteNonExistedPath() {
+        try {
+            fs.delete(new Path("/nonexists-delete"), true);
+            assert true;
+        } catch (IOException ex) {
             assert false;
         }
     }

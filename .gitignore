@@ -1,6 +1,8 @@
 /nbproject/
 /target/
-/hadoop/target/
-/minioclient/target/
-/miniofs/target/
-/miniofs/nbproject/
+/bin/
+/nbactions*
+/.classpath
+/.project
+/.settings
+/dependency-reduced-pom.xml

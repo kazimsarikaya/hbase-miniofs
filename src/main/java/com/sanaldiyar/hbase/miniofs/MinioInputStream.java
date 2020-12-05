@@ -24,10 +24,6 @@ import org.apache.hadoop.fs.Path;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- *
- * @author kazim
- */
 public class MinioInputStream extends FSInputStream {
 
     private final static Logger logger = LoggerFactory.getLogger(MinioInputStream.class.getName());
@@ -64,15 +60,17 @@ public class MinioInputStream extends FSInputStream {
         bufferStart = start;
         position = start;
         bufferPosition = 0;
+        logger.debug("after fill buffer new position {}", position);
     }
 
     @Override
-    public void seek(long pos) throws IOException {
+    public synchronized void seek(long pos) throws IOException {
         if (bufferStart <= pos && pos <= bufferStart + buffer.length) {
             position = pos;
         } else {
             fillBuffer(pos);
         }
+        logger.debug("input stream position changed to {}", position);
     }
 
     @Override
@@ -112,6 +110,7 @@ public class MinioInputStream extends FSInputStream {
 
         int off_backup = off;
         int len_backup = len;
+        long pos_backup = position;
 
         while (len > 0) {
             int avail = bufferLength - bufferPosition;
@@ -143,7 +142,7 @@ public class MinioInputStream extends FSInputStream {
             readed += maxRead;
             position += maxRead;
         }
-        logger.debug("data readed from file {} postition {} to offset {} with len {} requested len {}", path.toUri().getPath(), position, off_backup, readed, len_backup);
+        logger.debug("data readed from file {} to offset {} with len {} requested len {} new position {} old_position {}", path.toUri().getPath(), off_backup, readed, len_backup, position, pos_backup);
         if (readed == 0) {
             return -1;
         }

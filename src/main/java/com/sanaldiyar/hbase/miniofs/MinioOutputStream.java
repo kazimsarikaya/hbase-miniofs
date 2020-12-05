@@ -34,10 +34,6 @@ import org.apache.hadoop.fs.UploadHandle;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- *
- * @author kazim
- */
 public class MinioOutputStream extends OutputStream {
 
     private final static Logger logger = LoggerFactory.getLogger(MinioOutputStream.class.getName());
@@ -54,6 +50,7 @@ public class MinioOutputStream extends OutputStream {
     private File backendFile;
     private OutputStream backendStream;
     private boolean closed;
+    private long totalWriten = 0;
 
     public MinioOutputStream(Path path, Configuration conf) throws IOException {
         this.path = path;
@@ -78,6 +75,7 @@ public class MinioOutputStream extends OutputStream {
             throw new IOException("Cannot create tmp buffer directory: " + dir);
         }
         File result = File.createTempFile("output-", ".tmp", dir);
+        logger.debug("a new backend {} created for the path {}", result.toPath(), path);
         result.deleteOnExit();
         return result;
     }
@@ -99,14 +97,16 @@ public class MinioOutputStream extends OutputStream {
             int bytesCW = partSize - backendOffset;
             backendStream.write(buffer, offset, bytesCW);
             backendOffset += bytesCW;
-            logger.debug("{} bytes of data writen to the backend file {} from offset {}", bytesCW, backendFile.toPath(), offset);
-            uploadPart(false, backendFile);
+            totalWriten += bytesCW;
+            logger.debug("{} bytes of data writen to the backend file {} from offset {} new position {} for path {}", bytesCW, backendFile.toPath(), offset, totalWriten, path);
+            uploadPart(false);
             offset += bytesCW;
             len -= bytesCW;
         }
         backendStream.write(buffer, offset, len);
         backendOffset += len;
-        logger.debug("{} bytes of data writen to the backend file {} from offset {}", len, backendFile.toPath(), offset);
+        totalWriten += len;
+        logger.debug("{} bytes of data writen to the backend file {} from offset {} new position {} for path {}", len, backendFile.toPath(), offset, totalWriten, path);
     }
 
     @Override
@@ -120,18 +120,18 @@ public class MinioOutputStream extends OutputStream {
             return;
         }
         closed = true;
-        uploadPart(true, backendFile);
+        uploadPart(true);
         backendFile = null;
         backendStream = null;
-
+        logger.debug("{} bytes of data writen to the destination {}", totalWriten, path);
     }
 
-    private synchronized void uploadPart(boolean lastPart, File part) throws IOException {
-
+    private synchronized void uploadPart(boolean lastPart) throws IOException {
+        backendStream.flush();
         backendStream.close();
-        logger.debug("sending file {}", part.toPath());
+        logger.debug("sending file {}", backendFile.toPath());
 
-        InputStream is = new BufferedInputStream(new FileInputStream(part));
+        InputStream is = new BufferedInputStream(new FileInputStream(backendFile));
 
         PartHandle ph = uploader.putPart(path, is, partNo, uploadHandle, backendOffset);
         parts.put(partNo, ph);
@@ -144,7 +144,7 @@ public class MinioOutputStream extends OutputStream {
             backendFile = createBackendFile();
             backendStream = new BufferedOutputStream(new FileOutputStream(backendFile));
         }
-        logger.debug("sending file {} completed", part.toPath());
+        logger.debug("sending file {} completed", backendFile.toPath());
     }
 
 }

@@ -16,16 +16,41 @@ limitations under the License.
  */
 package com.sanaldiyar.hbase.miniofs;
 
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.core.Filter;
+import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.appender.ConsoleAppender;
+import org.apache.logging.log4j.core.config.Configurator;
+import org.apache.logging.log4j.core.config.builder.api.AppenderComponentBuilder;
+import org.apache.logging.log4j.core.config.builder.api.ConfigurationBuilder;
+import org.apache.logging.log4j.core.config.builder.api.ConfigurationBuilderFactory;
+import org.apache.logging.log4j.core.config.builder.impl.BuiltConfiguration;
 import org.junit.platform.runner.JUnitPlatform;
 import org.junit.platform.suite.api.SelectPackages;
 import org.junit.runner.RunWith;
 
-/**
- *
- * @author kazim
- */
 @RunWith(JUnitPlatform.class)
 @SelectPackages("com.sanaldiyar.hbase.miniofs")
 public class MinioFSSuiteTest {
+
+    public MinioFSSuiteTest() {
+
+        ConfigurationBuilder<BuiltConfiguration> builder = ConfigurationBuilderFactory.newConfigurationBuilder();
+        builder.setStatusLevel(Level.INFO);
+        builder.setConfigurationName("BuilderTest");
+        builder.add(builder.newFilter("ThresholdFilter", Filter.Result.ACCEPT, Filter.Result.NEUTRAL)
+                .addAttribute("level", Level.DEBUG));
+        AppenderComponentBuilder appenderBuilder = builder.newAppender("Stdout", "CONSOLE").addAttribute("target",
+                ConsoleAppender.Target.SYSTEM_OUT);
+        appenderBuilder.add(builder.newLayout("PatternLayout")
+                .addAttribute("pattern", "%d [%t] %-5level: %msg%n%throwable"));
+        appenderBuilder.add(builder.newFilter("MarkerFilter", Filter.Result.DENY, Filter.Result.NEUTRAL)
+                .addAttribute("marker", "FLOW"));
+        builder.add(appenderBuilder);
+        builder.add(builder.newLogger("org.apache.logging.log4j", Level.DEBUG)
+                .add(builder.newAppenderRef("Stdout")).addAttribute("additivity", false));
+        builder.add(builder.newRootLogger(Level.ERROR).add(builder.newAppenderRef("Stdout")));
+        LoggerContext ctx = Configurator.initialize(builder.build());
+    }
 
 }

@@ -33,10 +33,6 @@ import org.apache.hadoop.util.Progressable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- *
- * @author kazim
- */
 public class MinioFileSystem extends FileSystem {
 
     public final static String MINIO_ENDPOINT = "fs.minio.endpoint";
@@ -46,7 +42,7 @@ public class MinioFileSystem extends FileSystem {
     public final static String MINIO_UPLOAD_PART_SIZE = "fs.minio.upload-part.size";
     public final static String MINIO_ROOT = "hbase.rootdir";
     public final static int MINIO_DEFAULT_PART_SIZE = 5 << 20;
-    public final static int MINIO_DEFAULT_BUFFER_SIZE = 4 << 10;
+    public final static int MINIO_DEFAULT_BUFFER_SIZE = 128 << 10;
 
     private final static Logger logger = LoggerFactory.getLogger(MinioFileSystem.class.getName());
 
@@ -88,7 +84,7 @@ public class MinioFileSystem extends FileSystem {
         try {
             FileStatus fs = getFileStatus(path);
             if (!fs.isFile()) {
-                throw new IOException(String.format("requested path is not file", path.toString()));
+                throw new IOException(String.format("requested path is not file %s", path.toString()));
             }
         } catch (FileNotFoundException ex) {
             throw ex;
@@ -110,6 +106,7 @@ public class MinioFileSystem extends FileSystem {
 
     private FSDataOutputStream create_internal(Path path, FsPermission perm, boolean override, int bufferSize, short replication, long blockSize, Progressable p, boolean recursive) throws IOException {
         path = makeAbsolute(path);
+        logger.debug("new file will be created for {}", path);
         Path parent = path.getParent();
         if (recursive) {
             mkdirs(parent, perm);
@@ -180,6 +177,7 @@ public class MinioFileSystem extends FileSystem {
     }
 
     protected Path makeAbsolute(Path path) {
+        assert !path.toString().contains("%2C");
         if (path.isAbsolute()) {
             return path;
         }

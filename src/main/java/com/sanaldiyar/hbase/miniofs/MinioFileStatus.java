@@ -26,10 +26,16 @@ import org.apache.hadoop.fs.Path;
  */
 public class MinioFileStatus extends FileStatus {
 
+    private static final long serialVersionUID = 689346074963917036L;
     private final boolean isDir;
+    private final long ma_time;
+    private final Path path;
+    private final long length;
 
     public MinioFileStatus(Path path, boolean isDirectory, long length) {
-        super(length, isDirectory, 0, 0, new Date().getTime(), new Date().getTime(), null, "miniofs", "miniofs", path);
+        this.path = path;
+        this.length = length;
+        ma_time = new Date().getTime();
         isDir = isDirectory;
     }
 
@@ -41,6 +47,41 @@ public class MinioFileStatus extends FileStatus {
     @Override
     public boolean isFile() {
         return !isDirectory();
+    }
+
+    @Override
+    public long getModificationTime() {
+        return ma_time;
+    }
+
+    @Override
+    public long getAccessTime() {
+        return ma_time;
+    }
+
+    @Override
+    public String getOwner() {
+        return "miniofs";
+    }
+
+    @Override
+    public String getGroup() {
+        return "miniofs";
+    }
+
+    @Override
+    public long getBlockSize() {
+        return MinioUtil.getInstance().getDefaultBlockSize();
+    }
+
+    @Override
+    public long getLen() {
+        return length;
+    }
+
+    @Override
+    public Path getPath() {
+        return path;
     }
 
 }

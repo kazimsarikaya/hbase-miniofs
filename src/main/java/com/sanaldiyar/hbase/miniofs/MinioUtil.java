@@ -56,10 +56,6 @@ import org.apache.hadoop.fs.Path;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- *
- * @author kazim
- */
 public class MinioUtil implements Configurable {
 
     public final static String MINIO_METADATA_BLOCK_SIZE = "hbase.fs.file.blocksize";
@@ -113,7 +109,7 @@ public class MinioUtil implements Configurable {
 
     public FileStatus[] listStatus(Path path) throws FileNotFoundException, IOException {
         logger.debug("listing status of {} {}", path.toUri().getPath(), path.toString());
-        return listStatus(path, true);
+        return listStatus(path, false);
     }
 
     public FileStatus[] listStatus(Path path, boolean recursive) throws FileNotFoundException, IOException {
@@ -121,7 +117,8 @@ public class MinioUtil implements Configurable {
         try {
             base_fs = getFileStatus(path);
         } catch (FileNotFoundException ex) {
-            return new MinioFileStatus[]{};
+            logger.debug("path {} not exists", path);
+            throw ex;
         } catch (IOException ex) {
             throw ex;
         }
@@ -140,11 +137,13 @@ public class MinioUtil implements Configurable {
             if (prefix.equals("/")) {
                 results = client.listObjects(ListObjectsArgs.builder()
                         .bucket(bucket)
+                        .useUrlEncodingType(true)
                         .recursive(recursive)
                         .build());
             } else {
                 results = client.listObjects(ListObjectsArgs.builder()
                         .bucket(bucket)
+                        .useUrlEncodingType(true)
                         .recursive(recursive)
                         .prefix(prefix)
                         .build());
@@ -269,6 +268,63 @@ public class MinioUtil implements Configurable {
         return true;
     }
 
+    public boolean danglingExists(Path path) throws IOException {
+        FileStatus fileStatus = null;
+        try {
+            fileStatus = getFileStatus(path);
+        } catch (FileNotFoundException e) {
+        }
+        if (fileStatus == null) {
+            String prefix = path.toUri().getPath();
+            if (prefix.startsWith("/")) {
+                prefix = prefix.substring(1);
+            }
+            prefix += "/";
+            Iterable<Result<Item>> results = client.listObjects(ListObjectsArgs.builder()
+                    .bucket(bucket)
+                    .useUrlEncodingType(true)
+                    .recursive(true)
+                    .prefix(prefix)
+                    .build());
+            int itemCnt = 0;
+            for (Result<Item> result : results) {
+                itemCnt++;
+            }
+            return itemCnt != 0;
+        }
+        return false;
+    }
+
+    private boolean cleanupDanglings(Path path) throws IOException {
+        logger.debug("start cleanup danglings of {} completed", path);
+        String prefix = path.toUri().getPath();
+        if (prefix.startsWith("/")) {
+            prefix = prefix.substring(1);
+        }
+        prefix += "/";
+        Iterable<Result<Item>> results = client.listObjects(ListObjectsArgs.builder()
+                .bucket(bucket)
+                .useUrlEncodingType(true)
+                .recursive(true)
+                .prefix(prefix)
+                .build());
+
+        for (Result<Item> result : results) {
+            try {
+                Item item = result.get();
+                client.removeObject(RemoveObjectArgs.builder()
+                        .bucket(bucket)
+                        .object(item.objectName())
+                        .build());
+            } catch (ErrorResponseException | InsufficientDataException | InternalException | InvalidResponseException | ServerException | XmlParserException | IOException | IllegalArgumentException | InvalidKeyException | NoSuchAlgorithmException exp) {
+                logger.error("unknown error occured: {}", exp);
+                throw new IOException(String.format("unknown error occured %s", exp));
+            }
+        }
+        logger.debug("cleanup danglings of {} completed", path);
+        return true;
+    }
+
     public synchronized boolean delete(Path path, boolean recursive) throws IOException {
         logger.debug("try to delete path {}", path.toString());
         FileStatus fs;
@@ -287,7 +343,11 @@ public class MinioUtil implements Configurable {
             }
 
             if (!recursive && child_fses.length != 0) {
-                throw new IOException(String.format("folder is not empty {}", path));
+                throw new IOException(String.format("folder is not empty %s", path));
+            }
+            if (child_fses.length == 0 && danglingExists(path)) {
+                logger.debug("danglings found at {}", path);
+                return cleanupDanglings(path);
             }
             for (FileStatus child_fs : child_fses) {
                 if (child_fs.compareTo(fs) == 0) {
@@ -379,6 +439,9 @@ public class MinioUtil implements Configurable {
             String strDst = dst.toUri().getPath();
             if (strDst.startsWith("/")) {
                 strDst = strDst.substring(1);
+            }
+            if (strDst.contains("%2C")) {
+                logger.debug("inccorrect url character {}", dst);
             }
             client.composeObject(
                     ComposeObjectArgs.builder()
