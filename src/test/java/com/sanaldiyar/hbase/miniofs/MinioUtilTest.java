@@ -16,152 +16,270 @@ limitations under the License.
  */
 package com.sanaldiyar.hbase.miniofs;
 
-import com.google.common.hash.HashFunction;
-import com.google.common.hash.Hasher;
-import com.google.common.hash.Hashing;
 import java.io.ByteArrayInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.security.SecureRandom;
-import java.util.ArrayList;
-import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
-import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.fs.PathFilter;
-import org.apache.hadoop.hbase.util.FSUtils;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class MinioUtilTest {
 
-    private final static MinioUtil minioUtil = MinioUtil.getInstance();
-    private static Configuration conf;
     private final static Logger logger = LoggerFactory.getLogger(MinioUtilTest.class.getName());
-
-    public MinioUtilTest() {
-    }
 
     @BeforeAll
     public static void setUpClass() {
-
-        conf = new Configuration();
-        conf.set(MinioFileSystem.MINIO_ENDPOINT, "http://localhost:9000");
-        conf.set(MinioFileSystem.MINIO_ROOT, "minio://test");
-        conf.set(MinioFileSystem.MINIO_ACCESS_KEY, "minioadmin");
-        conf.set(MinioFileSystem.MINIO_SECRET_KEY, "minioadmin");
-        conf.set(MinioFileSystem.MINIO_STREAM_BUFFER_SIZE, String.valueOf(128 << 10));
-        conf.set(MinioFileSystem.MINIO_UPLOAD_PART_SIZE, String.valueOf(8 << 20));
-
-        minioUtil.setConf(conf);
-    }
-
-    @AfterAll
-    public static void tearDownClass() {
-    }
-
-    @BeforeEach
-    public void setUp() {
-    }
-
-    @AfterEach
-    public void tearDown() {
+        MinioFSSuiteTest.init();
     }
 
     @Test
-    public void testComplete() {
+    public void testMakeSingleDir() {
         try {
-            assert minioUtil.mkdirs(new Path("test")) == true;
-            assert minioUtil.mkdirs(new Path("test/subdir")) == true;
-            assert minioUtil.mkdirs(new Path("test/subdir/subsubdir")) == true;
-            assert minioUtil.mkdirs(new Path("test2/subdir/subsub")) == true;
-            FileStatus[] listStatus = minioUtil.listStatus(new Path("/test2"));
-            for (FileStatus fs : listStatus) {
-                logger.info(fs.toString());
-            }
-            assert minioUtil.delete(new Path("/test2"), true) == true;
-            byte[] data = new byte[]{65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75};
-            minioUtil.putStream(new Path("/test/file1"), new ByteArrayInputStream(data), data.length);
-            minioUtil.putStream(new Path("/test/subdir/file2"), new ByteArrayInputStream(data), data.length);
-            minioUtil.putStream(new Path("/test/subdir/subsubdir/file3"), new ByteArrayInputStream(data), data.length);
-            minioUtil.putStream(new Path("/test/subdir/subsubdir/file4"), new ByteArrayInputStream(data), data.length);
-            assert minioUtil.rename(new Path("/test"), new Path("/test3")) == true;
-
-            minioUtil.listStatus(new Path("/"));
-
-            Path rw = new Path("minio:///test3/subdir/subsubdir/file5");
-
-            HashFunction sha256 = Hashing.sha256();
-            SecureRandom random = new SecureRandom();
-            int partsize = 8 << 20;
-            byte[] tmpData = new byte[4 << 20];
-            MinioOutputStream mos = new MinioOutputStream(rw, conf, partsize);
-            Hasher hasher = sha256.newHasher();
-            for (int i = 0; i < 16; i++) {
-                random.nextBytes(tmpData);
-                hasher.putBytes(tmpData);
-                mos.write(tmpData);
-            }
-            mos.close();
-            String hashSended = hasher.hash().toString();
-
-            MinioInputStream mis = new MinioInputStream(rw, conf, tmpData.length >> 2);
-            hasher = sha256.newHasher();
-            long pos = 0;
-            while (true) {
-                int r = mis.read(tmpData);
-                if (r <= 0) {
-                    logger.debug("readed {} pos {}", r, pos);
-                    break;
-                }
-                logger.debug("readed {} pos {}", r, pos);
-                pos += r;
-                hasher.putBytes(tmpData, 0, r);
-            }
-            mis.close();
-            String hashReaded = hasher.hash().toString();
-
-            logger.info("sended hash: {}", hashSended);
-            logger.info("recved hash {}", hashReaded);
-
-            assert hashSended.equals(hashReaded);
-
-            mis = new MinioInputStream(new Path("/test3/subdir/subsubdir/file4"), conf, tmpData.length >> 2);
-            int r = mis.read(tmpData);
-            mis.close();
-            assert r == data.length;
-            assert new String(tmpData, 0, r).equals("ABCDEFGHIJK");
-
-            logger.debug("getName: {} len {}", rw.getName(), rw.getName().length());
-
-            FileSystem fs = rw.getFileSystem(conf);
-            FileStatus f_s = fs.getFileStatus(rw);
-            assert f_s.getPath().getName().equals("file5");
-
-            FileStatus[] f_ses = fs.listStatus(rw.getParent(), new PathFilter() {
-
-                private final ArrayList<String> filters = new ArrayList<>();
-
-                @Override
-                public boolean accept(Path path) {
-                    filters.add("file5");
-                    return filters.contains(path.getName());
-                }
-            });
-
-            assert f_ses.length == 1;
-
-            FSUtils.UserTableDirFilter filter = new FSUtils.UserTableDirFilter(fs);
-            assert !filter.accept(new MinioFileStatus(new Path("minio://test/.tmp"), true, 0));
-
-        } catch (IOException ex) {
-            logger.error(null, ex);
+            Path p = new Path(MinioFSSuiteTest.getRootPath(), "/test");
+            assert MinioFSSuiteTest.getMinioUtil().mkdirs(p) == true;
+            FileStatus fileStatus = MinioFSSuiteTest.getMinioUtil().getFileStatus(p);
+            assert fileStatus.isDirectory();
+            assert fileStatus.getPath().toUri().equals(p.toUri());
+        } catch (IOException e) {
+            logger.error("test failed", e);
             assert false;
         }
     }
 
+    @Test
+    public void testMakeRecursiveDir() {
+        try {
+            Path p = new Path(MinioFSSuiteTest.getRootPath(), "/test/subdir/subsubdir");
+            Path pp = new Path(MinioFSSuiteTest.getRootPath(), "/test/subdir");
+            assert MinioFSSuiteTest.getMinioUtil().mkdirs(p) == true;
+            assert MinioFSSuiteTest.getMinioUtil().getFileStatus(p).isDirectory();
+            assert MinioFSSuiteTest.getMinioUtil().getFileStatus(pp).isDirectory();
+        } catch (IOException e) {
+            logger.error("test failed", e);
+            assert false;
+        }
+    }
+
+    @Test
+    public void testCreateFile() {
+        try {
+            Path p = new Path(MinioFSSuiteTest.getRootPath(), "/test/file1");
+            String data = "HELLO WORLD";
+            byte[] bdata = data.getBytes();
+            MinioFSSuiteTest.getMinioUtil().putStream(p, new ByteArrayInputStream(bdata), bdata.length);
+            assert MinioFSSuiteTest.getMinioUtil().getFileStatus(p).isFile();
+        } catch (IOException e) {
+            logger.error("test failed", e);
+            assert false;
+        }
+    }
+
+    @Test
+    public void testCreateFileNotExistsDir() {
+        try {
+            Path p = new Path(MinioFSSuiteTest.getRootPath(), "/test/no-exists-dir/file1");
+            String data = "HELLO WORLD";
+            byte[] bdata = data.getBytes();
+            MinioFSSuiteTest.getMinioUtil().putStream(p, new ByteArrayInputStream(bdata), bdata.length);
+            assert MinioFSSuiteTest.getMinioUtil().getFileStatus(p).isFile();
+        } catch (IOException e) {
+            logger.error("test failed", e);
+            assert false;
+        }
+    }
+
+    @Test
+    public void testDeleteFile() {
+        try {
+            Path p = new Path(MinioFSSuiteTest.getRootPath(), "/test/file2");
+            String data = "HELLO WORLD";
+            byte[] bdata = data.getBytes();
+            MinioFSSuiteTest.getMinioUtil().putStream(p, new ByteArrayInputStream(bdata), bdata.length);
+            assert MinioFSSuiteTest.getMinioUtil().getFileStatus(p).isFile();
+            assert MinioFSSuiteTest.getMinioUtil().delete(p, false);
+            try {
+                assert MinioFSSuiteTest.getMinioUtil().getFileStatus(p) == null;
+            } catch (FileNotFoundException ne) {
+                assert true;
+            }
+        } catch (IOException e) {
+            logger.error("test failed", e);
+            assert false;
+        }
+    }
+
+    @Test
+    public void testDeleteFolder() {
+        try {
+            Path p = new Path(MinioFSSuiteTest.getRootPath(), "/test3/subdir/subsubdir");
+            assert MinioFSSuiteTest.getMinioUtil().mkdirs(p) == true;
+            assert MinioFSSuiteTest.getMinioUtil().getFileStatus(p).isDirectory();
+            assert MinioFSSuiteTest.getMinioUtil().delete(p, false);
+            try {
+                assert MinioFSSuiteTest.getMinioUtil().getFileStatus(p) == null;
+            } catch (FileNotFoundException ne) {
+                assert true;
+            }
+        } catch (IOException e) {
+            logger.error("test failed", e);
+            assert false;
+        }
+    }
+
+    @Test
+    public void testDeleteFolderRecursive() {
+        try {
+            Path p = new Path(MinioFSSuiteTest.getRootPath(), "/test3/subdir/subsubdir");
+            assert MinioFSSuiteTest.getMinioUtil().mkdirs(p) == true;
+            assert MinioFSSuiteTest.getMinioUtil().getFileStatus(p).isDirectory();
+            assert MinioFSSuiteTest.getMinioUtil().delete(new Path("test3"), true);
+            try {
+                assert MinioFSSuiteTest.getMinioUtil().getFileStatus(p) == null;
+            } catch (FileNotFoundException ne) {
+                assert true;
+            }
+            try {
+                assert MinioFSSuiteTest.getMinioUtil().getFileStatus(new Path(MinioFSSuiteTest.getRootPath(), "/test3/subdir")) == null;
+            } catch (FileNotFoundException ne) {
+                assert true;
+            }
+            try {
+                assert MinioFSSuiteTest.getMinioUtil().getFileStatus(new Path(MinioFSSuiteTest.getRootPath(), "/test3")) == null;
+            } catch (FileNotFoundException ne) {
+                assert true;
+            }
+        } catch (IOException e) {
+            logger.error("test failed", e);
+            assert false;
+        }
+    }
+
+    @Test
+    public void testDeleteFolderRecursiveFailNonEmpty() {
+        try {
+            Path p = new Path(MinioFSSuiteTest.getRootPath(), "/test3/subdir/subsubdir");
+            assert MinioFSSuiteTest.getMinioUtil().mkdirs(p) == true;
+            assert MinioFSSuiteTest.getMinioUtil().getFileStatus(p).isDirectory();
+            assert MinioFSSuiteTest.getMinioUtil().delete(new Path(MinioFSSuiteTest.getRootPath(), "test3"), false);
+            assert false;
+        } catch (IOException e) {
+            assert true;
+        }
+    }
+
+    @Test
+    public void testListStatus() {
+        try {
+            Path parent = new Path(MinioFSSuiteTest.getRootPath(), "/listnr");
+            Path path1 = new Path(MinioFSSuiteTest.getRootPath(), "/listnr/path1");
+            Path path2 = new Path(MinioFSSuiteTest.getRootPath(), "/listnr/path2");
+            Path path3 = new Path(MinioFSSuiteTest.getRootPath(), "/listnr/path2/path3");
+
+            Path[] childs = new Path[]{path1, path2};
+            Path[] paths = new Path[]{parent, path1, path2, path3};
+            for (var p : paths) {
+                assert MinioFSSuiteTest.getMinioUtil().mkdirs(p);
+            }
+
+            FileStatus[] fileStatuses = MinioFSSuiteTest.getMinioUtil().listStatus(parent);
+            assert fileStatuses.length == childs.length;
+
+            for (var fileStatus : fileStatuses) {
+                assert !fileStatus.getPath().equals(path3);
+            }
+
+        } catch (IOException e) {
+            logger.error("test failed", e);
+            assert false;
+        }
+    }
+
+    @Test
+    public void testListStatusRecursive() {
+        try {
+            Path parent = new Path(MinioFSSuiteTest.getRootPath(), "/listr");
+            Path path1 = new Path(MinioFSSuiteTest.getRootPath(), "/listr/path1");
+            Path path2 = new Path(MinioFSSuiteTest.getRootPath(), "/listr/path2");
+            Path path3 = new Path(MinioFSSuiteTest.getRootPath(), "/listr/path2/path3");
+
+            Path[] childs = new Path[]{path1, path2, path3};
+            Path[] paths = new Path[]{parent, path1, path2, path3};
+            for (var p : paths) {
+                assert MinioFSSuiteTest.getMinioUtil().mkdirs(p);
+            }
+
+            FileStatus[] fileStatuses = MinioFSSuiteTest.getMinioUtil().listStatus(parent, true);
+            assert fileStatuses.length == childs.length;
+
+            for (var fileStatus : fileStatuses) {
+                logger.debug("returned file status {}", fileStatus);
+                boolean found = false;
+                for (var c : childs) {
+                    if (fileStatus.getPath().equals(c)) {
+                        found = true;
+                    }
+                }
+                if (!found) {
+                    logger.debug("path is not in child {}", fileStatus.getPath());
+                }
+                assert found;
+            }
+
+        } catch (IOException e) {
+            logger.error("test failed", e);
+            assert false;
+        }
+    }
+
+    @Test
+    public void testRenameFile() {
+        try {
+            Path pathSrc = new Path(MinioFSSuiteTest.getRootPath(), "/renamenr/path2/src");
+            Path pathDst = new Path(MinioFSSuiteTest.getRootPath(), "/renamenr/path2/dst");
+            assert MinioFSSuiteTest.getMinioUtil().mkdirs(pathSrc);
+            assert MinioFSSuiteTest.getMinioUtil().rename(pathSrc, pathDst);
+            FileStatus fileStatus = MinioFSSuiteTest.getMinioUtil().getFileStatus(pathDst);
+            assert fileStatus != null;
+            assert fileStatus.getPath().equals(pathDst);
+        } catch (IOException e) {
+            logger.error("test failed", e);
+            assert false;
+        }
+    }
+
+    @Test
+    public void testRenameFileRecursive() {
+        try {
+            Path pathWithChilds = new Path(MinioFSSuiteTest.getRootPath(), "/renamer/child1/child2");
+
+            Path pathSrc = new Path(MinioFSSuiteTest.getRootPath(), "/renamer");
+            Path pathDst = new Path(MinioFSSuiteTest.getRootPath(), "/renamer-new");
+            assert MinioFSSuiteTest.getMinioUtil().mkdirs(pathWithChilds);
+
+            assert MinioFSSuiteTest.getMinioUtil().rename(pathSrc, pathDst);
+
+            Path pathNewChild1 = new Path(MinioFSSuiteTest.getRootPath(), "/renamer-new/child1");
+            Path pathNewChild2 = new Path(MinioFSSuiteTest.getRootPath(), "/renamer-new/child1/child2");
+
+            FileStatus fileStatus;
+
+            fileStatus = MinioFSSuiteTest.getMinioUtil().getFileStatus(pathDst);
+            assert fileStatus != null;
+            assert fileStatus.getPath().equals(pathDst);
+
+            fileStatus = MinioFSSuiteTest.getMinioUtil().getFileStatus(pathNewChild1);
+            assert fileStatus != null;
+            assert fileStatus.getPath().equals(pathNewChild1);
+
+            fileStatus = MinioFSSuiteTest.getMinioUtil().getFileStatus(pathNewChild2);
+            assert fileStatus != null;
+            assert fileStatus.getPath().equals(pathNewChild2);
+        } catch (IOException e) {
+            logger.error("test failed", e);
+            assert false;
+        }
+    }
 }

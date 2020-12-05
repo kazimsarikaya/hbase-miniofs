@@ -123,7 +123,7 @@ public class MinioUtil implements Configurable {
             throw ex;
         }
 
-        if (!base_fs.isDirectory()) {
+        if (base_fs.isFile()) {
             return new FileStatus[]{base_fs};
         }
 
@@ -151,12 +151,16 @@ public class MinioUtil implements Configurable {
 
             for (Result<Item> result : results) {
                 Item item = result.get();
-                String itemPath = this.uri + "/" + item.objectName();
+                String strItemPath = this.uri + "/" + item.objectName();
+                Path itemPath = new Path(strItemPath);
+                if (path.toUri().equals(itemPath.toUri())) {
+                    continue;
+                }
                 boolean isDir = false;
-                if (itemPath.endsWith("/")) {
+                if (strItemPath.endsWith("/")) {
                     isDir = true;
                 }
-                FileStatus fs = new MinioFileStatus(new Path(itemPath), isDir, item.size());
+                FileStatus fs = new MinioFileStatus(itemPath, isDir, item.size());
                 logger.debug("path found {} isDir {} size {}", fs.getPath(), fs.isDirectory(), fs.getLen());
                 statuses.add(fs);
             }
@@ -168,6 +172,7 @@ public class MinioUtil implements Configurable {
 
         FileStatus[] fses = new FileStatus[statuses.size()];
         statuses.toArray(fses);
+        logger.debug("listing returned {} paths", fses.length);
         return fses;
     }
 
@@ -473,7 +478,7 @@ public class MinioUtil implements Configurable {
                 strDst = strDst.substring(1);
             }
 
-            FileStatus[] srcFSes = listStatus(src);
+            FileStatus[] srcFSes = listStatus(src, true);
             for (FileStatus fs : srcFSes) {
                 String tmp = fs.getPath().toUri().getPath();
                 if (tmp.startsWith("/")) {
