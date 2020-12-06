@@ -104,7 +104,7 @@ class MinioMultipartUploadHandle implements UploadHandle {
     public MinioMultipartUploadHandle(FileSystem fs, Path path) {
         this.path = path;
         UUID uuid = UUID.randomUUID();
-        this.tmpPath = new Path(fs.getWorkingDirectory(), "/.tmp-parts/" + uuid.toString().replace("-", ""));
+        this.tmpPath = new Path(fs.getWorkingDirectory(), ".tmp-parts/" + uuid.toString().replace("-", ""));
     }
 
     public Path getPath() {

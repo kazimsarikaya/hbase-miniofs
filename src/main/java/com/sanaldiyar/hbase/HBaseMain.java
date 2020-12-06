@@ -32,28 +32,41 @@ public class HBaseMain {
     public static void main(String[] args) {
 
         Configuration conf = HBaseConfiguration.create();
-        conf.set(MinioFileSystem.MINIO_ENDPOINT, "http://127.0.0.1:9000");
-        conf.set(MinioFileSystem.MINIO_ROOT, "minio://hbase/");
+        conf.set(MinioFileSystem.MINIO_ROOT, "minio://minioadmin:minioadmin@127.0.0.1:9000/hbase"); // minio://<host:port>/<bucket>
 
-        conf.set(MinioFileSystem.MINIO_ACCESS_KEY, "minioadmin");
-        conf.set(MinioFileSystem.MINIO_SECRET_KEY, "minioadmin");
+        conf.setBoolean("hbase.cluster.distributed", true);
+        conf.setBoolean("hbase.unsafe.stream.capability.enforce", false);
 
-        conf.set("hbase.cluster.distributed", "true");
-        conf.set("hbase.unsafe.stream.capability.enforce", "false");
-
-        if (args.length != 1) {
+        if (args.length < 1) {
             logger.error("master/region type param should be given");
         }
 
         String type = args[0];
 
+        int portIncrease = 0;
+        if (args.length == 2) {
+            portIncrease = Integer.valueOf(args[1]);
+        }
+
         try {
             HRegionServer regionServer = null;
             switch (type) {
                 case "master":
+                    int masterServerPort = 16000;
+                    int masterServerInfoPort = 16010;
+                    masterServerPort += portIncrease;
+                    masterServerInfoPort += portIncrease;
+                    conf.setInt("hbase.master.port", masterServerPort);
+                    conf.setInt("hbase.master.info.port", masterServerInfoPort);
                     regionServer = new HMaster(conf);
                     break;
                 case "region":
+                    int regionServerPort = 16020;
+                    int regionServerInfoPort = 16030;
+                    regionServerPort += portIncrease;
+                    regionServerInfoPort += portIncrease;
+                    conf.setInt("hbase.regionserver.port", regionServerPort);
+                    conf.setInt("hbase.regionserver.info.port", regionServerInfoPort);
                     regionServer = new HRegionServer(conf);
                     break;
                 default:

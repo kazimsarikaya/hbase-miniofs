@@ -61,8 +61,7 @@ public class MinioUtil implements Configurable {
     public final static String MINIO_METADATA_BLOCK_SIZE = "hbase.fs.file.blocksize";
 
     private String endpoint;
-    private String accessKey;
-    private String secretKey;
+    private URI uri;
     private Path rootPath;
     private MinioClient client;
     private String bucket;
@@ -72,23 +71,61 @@ public class MinioUtil implements Configurable {
 
     private final static MinioUtil instance = new MinioUtil();
 
+    private boolean confSetted = false;
+
     @Override
     public void setConf(Configuration conf) {
+        if (confSetted) {
+            return;
+        }
         try {
             this.conf = conf;
-            this.endpoint = conf.get(MinioFileSystem.MINIO_ENDPOINT);
-            this.accessKey = conf.get(MinioFileSystem.MINIO_ACCESS_KEY);
-            this.secretKey = conf.get(MinioFileSystem.MINIO_SECRET_KEY);
-            URI uri = new URI(conf.get(MinioFileSystem.MINIO_ROOT));
-            this.bucket = uri.getHost();
+            URI tmpUri = new URI(conf.get(MinioFileSystem.MINIO_ROOT));
+            int port = tmpUri.getPort();
+            if (port == -1) {
+                port = 9000;
+            }
+            String hostPort = tmpUri.getHost() + ":" + String.valueOf(port);
+            this.endpoint = "http://" + hostPort;
+            logger.debug("minio endpoint address: {}", endpoint);
+            this.bucket = tmpUri.getPath().substring(1);
+            String authority = tmpUri.getUserInfo();
+            String[] up = authority.split(":");
+            logger.debug("bucket {} username {} password {}", bucket, up[0], up[1]);
+            uri = new URI(tmpUri.getScheme(), null, tmpUri.getHost(), port, tmpUri.getPath(), null, null);
             this.rootPath = new Path(uri);
             this.client = MinioClient.builder().
                     endpoint(this.getEndpoint())
-                    .credentials(this.accessKey, this.secretKey)
+                    .credentials(up[0], up[1])
                     .build();
+
+            conf.set(MinioFileSystem.MINIO_ROOT, uri.toString());
         } catch (URISyntaxException ex) {
             logger.error("hbase.rootdir malformed", ex);
         }
+        confSetted = true;
+    }
+
+    public URI getUri() {
+        return uri;
+    }
+
+    private String getPrefix(Path path) throws IOException {
+        String strPath = null;
+        if (path.isAbsolute()) {
+            strPath = path.toUri().getPath();
+            if (strPath.startsWith("/")) {
+                strPath = strPath.substring(1);
+            }
+            strPath = strPath.substring(bucket.length());
+            if (strPath.startsWith("/")) {
+                strPath = strPath.substring(1);
+            }
+        } else {
+            throw new IOException(String.format("path is not absolute %s", path));
+        }
+
+        return strPath;
     }
 
     @Override
@@ -131,7 +168,7 @@ public class MinioUtil implements Configurable {
         List<FileStatus> statuses = new LinkedList<>();
 
         try {
-            String prefix = convertDirKey(path);
+            String prefix = convertDirPrefix(path);
 
             Iterable<Result<Item>> results;
 
@@ -152,7 +189,7 @@ public class MinioUtil implements Configurable {
 
             for (Result<Item> result : results) {
                 Item item = result.get();
-                String strItemPath = "/" + item.objectName();
+                String strItemPath = item.objectName();
                 Path itemPath = new Path(rootPath, strItemPath);
                 if (path.toUri().equals(itemPath.toUri())) {
                     continue;
@@ -161,7 +198,7 @@ public class MinioUtil implements Configurable {
                 if (strItemPath.endsWith("/")) {
                     isDir = true;
                 }
-                FileStatus fs = new MinioFileStatus(itemPath, isDir, item.size());
+                FileStatus fs = new FileStatus(new MinioFileStatus(itemPath, isDir, item.size()));
                 logger.debug("path found {} isDir {} size {}", fs.getPath(), fs.isDirectory(), fs.getLen());
                 statuses.add(fs);
             }
@@ -178,14 +215,11 @@ public class MinioUtil implements Configurable {
     }
 
     public FileStatus getFileStatus(Path path) throws IOException {
-        String basePath = path.toUri().getPath();
-        if (basePath.startsWith("/")) {
-            basePath = basePath.substring(1);
-        }
+        String basePath = getPrefix(path);
         logger.debug("get status of path {}", basePath);
 
         if (basePath.isEmpty()) { //root
-            return new MinioFileStatus(path, true, 0);
+            return new FileStatus(new MinioFileStatus(path, true, 0));
         }
 
         StatObjectResponse stat = null;
@@ -223,7 +257,8 @@ public class MinioUtil implements Configurable {
         if (stat == null) {
             throw new IOException(String.format("cannot stat path: {}", path.toString()));
         } else {
-            MinioFileStatus fs = new MinioFileStatus(path, isDir, stat.size());
+            path = path.makeQualified(rootPath.toUri(), rootPath);
+            FileStatus fs = new FileStatus(new MinioFileStatus(path, isDir, stat.size()));
             return fs;
         }
     }
@@ -244,10 +279,11 @@ public class MinioUtil implements Configurable {
 
         while (!dirs.empty()) {
             Path tmpPath = dirs.pop();
-            String key = convertDirKey(tmpPath);
-            if (key.equals("/")) {
+            if (tmpPath.isRoot() || tmpPath.equals(rootPath)) {
                 continue;
             }
+            String key = convertDirPrefix(tmpPath);
+
             try {
                 FileStatus fs = getFileStatus(tmpPath);
                 if (!fs.isDirectory()) {
@@ -274,63 +310,6 @@ public class MinioUtil implements Configurable {
         return true;
     }
 
-    public boolean danglingExists(Path path) throws IOException {
-        FileStatus fileStatus = null;
-        try {
-            fileStatus = getFileStatus(path);
-        } catch (FileNotFoundException e) {
-        }
-        if (fileStatus == null) {
-            String prefix = path.toUri().getPath();
-            if (prefix.startsWith("/")) {
-                prefix = prefix.substring(1);
-            }
-            prefix += "/";
-            Iterable<Result<Item>> results = client.listObjects(ListObjectsArgs.builder()
-                    .bucket(bucket)
-                    .useUrlEncodingType(true)
-                    .recursive(true)
-                    .prefix(prefix)
-                    .build());
-            int itemCnt = 0;
-            for (Result<Item> result : results) {
-                itemCnt++;
-            }
-            return itemCnt != 0;
-        }
-        return false;
-    }
-
-    private boolean cleanupDanglings(Path path) throws IOException {
-        logger.debug("start cleanup danglings of {} completed", path);
-        String prefix = path.toUri().getPath();
-        if (prefix.startsWith("/")) {
-            prefix = prefix.substring(1);
-        }
-        prefix += "/";
-        Iterable<Result<Item>> results = client.listObjects(ListObjectsArgs.builder()
-                .bucket(bucket)
-                .useUrlEncodingType(true)
-                .recursive(true)
-                .prefix(prefix)
-                .build());
-
-        for (Result<Item> result : results) {
-            try {
-                Item item = result.get();
-                client.removeObject(RemoveObjectArgs.builder()
-                        .bucket(bucket)
-                        .object(item.objectName())
-                        .build());
-            } catch (ErrorResponseException | InsufficientDataException | InternalException | InvalidResponseException | ServerException | XmlParserException | IOException | IllegalArgumentException | InvalidKeyException | NoSuchAlgorithmException exp) {
-                logger.error("unknown error occured: {}", exp);
-                throw new IOException(String.format("unknown error occured %s", exp));
-            }
-        }
-        logger.debug("cleanup danglings of {} completed", path);
-        return true;
-    }
-
     public synchronized boolean delete(Path path, boolean recursive) throws IOException {
         logger.debug("try to delete path {}", path.toString());
         FileStatus fs;
@@ -351,10 +330,6 @@ public class MinioUtil implements Configurable {
             if (!recursive && child_fses.length != 0) {
                 throw new IOException(String.format("folder is not empty %s", path));
             }
-            if (child_fses.length == 0 && danglingExists(path)) {
-                logger.debug("danglings found at {}", path);
-                return cleanupDanglings(path);
-            }
             for (FileStatus child_fs : child_fses) {
                 if (child_fs.compareTo(fs) == 0) {
                     continue;
@@ -370,10 +345,7 @@ public class MinioUtil implements Configurable {
 
     private void deleteItem(Path path, boolean isDir) throws IOException {
         try {
-            String itemPath = path.toUri().getPath();
-            if (itemPath.startsWith("/")) {
-                itemPath = itemPath.substring(1);
-            }
+            String itemPath = getPrefix(path);
             if (isDir) {
                 itemPath += "/";
             }
@@ -392,10 +364,7 @@ public class MinioUtil implements Configurable {
         try {
             logger.debug("try to upload object to path {} with len {}", path.toString(), len);
             mkdirs(path.getParent());
-            String key = path.toUri().getPath();
-            if (key.startsWith("/")) {
-                key = key.substring(1);
-            }
+            String key = getPrefix(path);
             logger.debug("dst key will be: {}", key);
             ObjectWriteResponse resp = client.putObject(PutObjectArgs.builder()
                     .bucket(bucket)
@@ -410,15 +379,12 @@ public class MinioUtil implements Configurable {
         }
     }
 
-    private String convertDirKey(Path path) {
-        String result = path.toUri().getPath();
-        if (result.startsWith("/")) {
-            result = result.substring(1);
+    private String convertDirPrefix(Path path) throws IOException {
+        String prefix = getPrefix(path);
+        if (!prefix.endsWith("/")) {
+            prefix += "/";
         }
-        if (!result.endsWith("/")) {
-            result += "/";
-        }
-        return result;
+        return prefix;
     }
 
     public int getDefaultBlockSize() {
@@ -433,22 +399,13 @@ public class MinioUtil implements Configurable {
         List<ComposeSource> sources = new LinkedList<>();
 
         for (Path item : items) {
-            String strPath = item.toUri().getPath();
-            if (strPath.startsWith("/")) {
-                strPath = strPath.substring(1);
-            }
+            String strPath = getPrefix(item);
             sources.add(ComposeSource.builder().bucket(bucket).object(strPath).build());
             logger.debug("source added: {}", strPath);
         }
 
         try {
-            String strDst = dst.toUri().getPath();
-            if (strDst.startsWith("/")) {
-                strDst = strDst.substring(1);
-            }
-            if (strDst.contains("%2C")) {
-                logger.debug("inccorrect url character {}", dst);
-            }
+            String strDst = getPrefix(dst);
             client.composeObject(
                     ComposeObjectArgs.builder()
                             .bucket(bucket)
@@ -470,23 +427,14 @@ public class MinioUtil implements Configurable {
 
         copyItem(src, dst);
         if (src_fs.isDirectory()) {
-            String strSrc = src.toUri().getPath();
-            if (strSrc.startsWith("/")) {
-                strSrc = strSrc.substring(1);
-            }
-            String strDst = dst.toUri().getPath();
-            if (strDst.startsWith("/")) {
-                strDst = strDst.substring(1);
-            }
+            String strSrc = getPrefix(src);
+            String strDst = getPrefix(dst);
 
             FileStatus[] srcFSes = listStatus(src, true);
             for (FileStatus fs : srcFSes) {
-                String tmp = fs.getPath().toUri().getPath();
-                if (tmp.startsWith("/")) {
-                    tmp = tmp.substring(1);
-                }
+                String tmp = getPrefix(fs.getPath());
                 tmp = tmp.replace(strSrc, strDst);
-                copyItem(fs.getPath(), new Path(rootPath, "/" + tmp));
+                copyItem(fs.getPath(), new Path(rootPath, tmp));
             }
         }
 
@@ -499,15 +447,9 @@ public class MinioUtil implements Configurable {
             mkdirs(dst.getParent());
         }
 
-        String strSrc = src.toUri().getPath();
-        if (strSrc.startsWith("/")) {
-            strSrc = strSrc.substring(1);
-        }
+        String strSrc = getPrefix(src);
         FileStatus src_fs = getFileStatus(src);
-        String strDst = dst.toUri().getPath();
-        if (strDst.startsWith("/")) {
-            strDst = strDst.substring(1);
-        }
+        String strDst = getPrefix(dst);
         if (src_fs.isDirectory()) {
             strSrc += "/";
             strDst += "/";
@@ -530,10 +472,7 @@ public class MinioUtil implements Configurable {
 
     int fillData(Path path, long start, byte[] buffer) throws IOException {
         try {
-            String key = path.toUri().getPath();
-            if (key.startsWith("/")) {
-                key = key.substring(1);
-            }
+            String key = getPrefix(path);
             InputStream is = client.getObject(GetObjectArgs.builder()
                     .bucket(bucket)
                     .object(key)

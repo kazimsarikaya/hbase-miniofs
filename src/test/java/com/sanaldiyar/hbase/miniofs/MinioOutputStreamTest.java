@@ -21,6 +21,7 @@ import java.security.SecureRandom;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.Path;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,11 +35,16 @@ public class MinioOutputStreamTest {
         MinioFSSuiteTest.init();
     }
 
+    @BeforeEach
+    public void cleanup() throws Exception {
+        MinioFSSuiteTest.cleanUp();
+    }
+
     @Test
     public void testCreateFile() {
 
         try {
-            Path p = new Path("minio://test/mostest/file1");
+            Path p = new Path(MinioFSSuiteTest.getRootPath(), "mostest/file1");
             SecureRandom random = new SecureRandom();
             int partsize = MinioFSSuiteTest.getConf().getInt(MinioFileSystem.MINIO_UPLOAD_PART_SIZE, 0);
             assert partsize != 0;

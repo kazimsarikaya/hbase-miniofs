@@ -35,9 +35,6 @@ import org.slf4j.LoggerFactory;
 
 public class MinioFileSystem extends FileSystem {
 
-    public final static String MINIO_ENDPOINT = "fs.minio.endpoint";
-    public final static String MINIO_ACCESS_KEY = "fs.minio.access.key";
-    public final static String MINIO_SECRET_KEY = "fs.minio.secret.key";
     public final static String MINIO_STREAM_BUFFER_SIZE = "fs.minio.stream-buffer.size";
     public final static String MINIO_UPLOAD_PART_SIZE = "fs.minio.upload-part.size";
     public final static String MINIO_ROOT = "hbase.rootdir";
@@ -56,10 +53,12 @@ public class MinioFileSystem extends FileSystem {
     @Override
     public void initialize(URI name, Configuration conf) throws IOException {
 
-        this.uri = name;
-        this.workingDir = new Path("/");
-        setConf(conf);
         minioUtil.setConf(conf);
+        this.uri = minioUtil.getUri();
+        this.workingDir = new Path(uri);
+        logger.debug("workingdir {}", workingDir);
+
+        setConf(conf);
         super.initialize(name, conf);
     }
 
@@ -113,7 +112,7 @@ public class MinioFileSystem extends FileSystem {
         } else {
             FileStatus p_fs = getFileStatus(parent);
             if (!p_fs.isDirectory()) {
-                throw new IOException(String.format("cannot create file {} parent {} is not directory", path.toUri().getPath(), parent.toUri().getPath()));
+                throw new IOException(String.format("cannot create file %s parent %s is not directory", path, parent));
             }
         }
         if (override) {
@@ -127,7 +126,7 @@ public class MinioFileSystem extends FileSystem {
 
             }
             if (exists) {
-                throw new FileAlreadyExistsException(String.format("path already exists", path.toString()));
+                throw new FileAlreadyExistsException(String.format("path already exists %s", path.toString()));
             }
         }
         MinioOutputStream mos = new MinioOutputStream(path, getConf());
@@ -136,7 +135,7 @@ public class MinioFileSystem extends FileSystem {
 
     @Override
     public boolean rename(Path source, Path destination) throws IOException {
-        logger.debug("renaming old path {} to new path {}", source.toUri().getPath(), destination.toUri().getPath());
+        logger.debug("renaming old path {} to new path {}", source, destination);
         return minioUtil.rename(makeAbsolute(source), makeAbsolute(destination));
     }
 
@@ -152,7 +151,7 @@ public class MinioFileSystem extends FileSystem {
 
     @Override
     public void setWorkingDirectory(Path path) {
-        logger.debug("new working directory will be {}. old working directroy is {}", path.toUri().getPath(), workingDir.toUri().getPath());
+        logger.debug("new working directory will be {} old working directroy is {}", path, workingDir);
         workingDir = makeAbsolute(path);
     }
 

@@ -137,6 +137,12 @@ public class MinioOutputStream extends OutputStream {
         parts.put(partNo, ph);
         partNo++;
 
+        try {
+            backendFile.delete(); // also delete.
+        } catch (Exception e) {
+            logger.warn("error at deleting backend file", e);
+        }
+
         if (lastPart) {
             uploader.complete(path, parts, uploadHandle);
         } else {

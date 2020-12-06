@@ -16,6 +16,11 @@ limitations under the License.
  */
 package com.sanaldiyar.hbase.miniofs;
 
+import io.minio.ListObjectsArgs;
+import io.minio.MinioClient;
+import io.minio.RemoveObjectArgs;
+import io.minio.Result;
+import io.minio.messages.Item;
 import java.io.IOException;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -38,14 +43,30 @@ public class MinioFSSuiteTest {
     private static FileSystem fileSystem;
     private static Path rootPath;
 
+    public static void cleanUp() throws Exception {
+        MinioClient client = MinioClient.builder().
+                endpoint("http://localhost:9000")
+                .credentials("minioadmin", "minioadmin")
+                .build();
+
+        Iterable<Result<Item>> objects = client.listObjects(ListObjectsArgs.builder()
+                .recursive(true)
+                .bucket("test")
+                .build());
+        for (var object : objects) {
+            Item item = object.get();
+            client.removeObject(RemoveObjectArgs.builder()
+                    .bucket("test")
+                    .object(item.objectName())
+                    .build());
+        }
+    }
+
     public static void init() {
 
         try {
-            conf = new Configuration();
-            conf.set(MinioFileSystem.MINIO_ENDPOINT, "http://localhost:9000");
-            conf.set(MinioFileSystem.MINIO_ROOT, "minio://test/");
-            conf.set(MinioFileSystem.MINIO_ACCESS_KEY, "minioadmin");
-            conf.set(MinioFileSystem.MINIO_SECRET_KEY, "minioadmin");
+            conf = new Configuration(true);
+            conf.set(MinioFileSystem.MINIO_ROOT, "minio://minioadmin:minioadmin@localhost:9000/test");
             conf.set(MinioFileSystem.MINIO_STREAM_BUFFER_SIZE, String.valueOf(128 << 10));
             conf.set(MinioFileSystem.MINIO_UPLOAD_PART_SIZE, String.valueOf(8 << 20));
 

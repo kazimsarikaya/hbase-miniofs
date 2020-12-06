@@ -22,6 +22,7 @@ import java.io.IOException;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.Path;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,10 +36,15 @@ public class MinioUtilTest {
         MinioFSSuiteTest.init();
     }
 
+    @BeforeEach
+    public void cleanup() throws Exception {
+        MinioFSSuiteTest.cleanUp();
+    }
+
     @Test
     public void testMakeSingleDir() {
         try {
-            Path p = new Path(MinioFSSuiteTest.getRootPath(), "/test");
+            Path p = new Path(MinioFSSuiteTest.getRootPath(), "test");
             assert MinioFSSuiteTest.getMinioUtil().mkdirs(p) == true;
             FileStatus fileStatus = MinioFSSuiteTest.getMinioUtil().getFileStatus(p);
             assert fileStatus.isDirectory();
@@ -52,8 +58,8 @@ public class MinioUtilTest {
     @Test
     public void testMakeRecursiveDir() {
         try {
-            Path p = new Path(MinioFSSuiteTest.getRootPath(), "/test/subdir/subsubdir");
-            Path pp = new Path(MinioFSSuiteTest.getRootPath(), "/test/subdir");
+            Path p = new Path(MinioFSSuiteTest.getRootPath(), "test/subdir/subsubdir");
+            Path pp = new Path(MinioFSSuiteTest.getRootPath(), "test/subdir");
             assert MinioFSSuiteTest.getMinioUtil().mkdirs(p) == true;
             assert MinioFSSuiteTest.getMinioUtil().getFileStatus(p).isDirectory();
             assert MinioFSSuiteTest.getMinioUtil().getFileStatus(pp).isDirectory();
@@ -66,7 +72,7 @@ public class MinioUtilTest {
     @Test
     public void testCreateFile() {
         try {
-            Path p = new Path(MinioFSSuiteTest.getRootPath(), "/test/file1");
+            Path p = new Path(MinioFSSuiteTest.getRootPath(), "test/file1");
             String data = "HELLO WORLD";
             byte[] bdata = data.getBytes();
             MinioFSSuiteTest.getMinioUtil().putStream(p, new ByteArrayInputStream(bdata), bdata.length);
@@ -80,7 +86,7 @@ public class MinioUtilTest {
     @Test
     public void testCreateFileNotExistsDir() {
         try {
-            Path p = new Path(MinioFSSuiteTest.getRootPath(), "/test/no-exists-dir/file1");
+            Path p = new Path(MinioFSSuiteTest.getRootPath(), "test/no-exists-dir/file1");
             String data = "HELLO WORLD";
             byte[] bdata = data.getBytes();
             MinioFSSuiteTest.getMinioUtil().putStream(p, new ByteArrayInputStream(bdata), bdata.length);
@@ -94,7 +100,7 @@ public class MinioUtilTest {
     @Test
     public void testDeleteFile() {
         try {
-            Path p = new Path(MinioFSSuiteTest.getRootPath(), "/test/file2");
+            Path p = new Path(MinioFSSuiteTest.getRootPath(), "test/file2");
             String data = "HELLO WORLD";
             byte[] bdata = data.getBytes();
             MinioFSSuiteTest.getMinioUtil().putStream(p, new ByteArrayInputStream(bdata), bdata.length);
@@ -114,7 +120,7 @@ public class MinioUtilTest {
     @Test
     public void testDeleteFolder() {
         try {
-            Path p = new Path(MinioFSSuiteTest.getRootPath(), "/test3/subdir/subsubdir");
+            Path p = new Path(MinioFSSuiteTest.getRootPath(), "test3/subdir/subsubdir");
             assert MinioFSSuiteTest.getMinioUtil().mkdirs(p) == true;
             assert MinioFSSuiteTest.getMinioUtil().getFileStatus(p).isDirectory();
             assert MinioFSSuiteTest.getMinioUtil().delete(p, false);
@@ -132,22 +138,23 @@ public class MinioUtilTest {
     @Test
     public void testDeleteFolderRecursive() {
         try {
-            Path p = new Path(MinioFSSuiteTest.getRootPath(), "/test3/subdir/subsubdir");
+            Path p = new Path(MinioFSSuiteTest.getRootPath(), "test3/subdir/subsubdir");
+            Path parent = new Path(MinioFSSuiteTest.getRootPath(), "test3");
             assert MinioFSSuiteTest.getMinioUtil().mkdirs(p) == true;
             assert MinioFSSuiteTest.getMinioUtil().getFileStatus(p).isDirectory();
-            assert MinioFSSuiteTest.getMinioUtil().delete(new Path("test3"), true);
+            assert MinioFSSuiteTest.getMinioUtil().delete(parent, true);
             try {
                 assert MinioFSSuiteTest.getMinioUtil().getFileStatus(p) == null;
             } catch (FileNotFoundException ne) {
                 assert true;
             }
             try {
-                assert MinioFSSuiteTest.getMinioUtil().getFileStatus(new Path(MinioFSSuiteTest.getRootPath(), "/test3/subdir")) == null;
+                assert MinioFSSuiteTest.getMinioUtil().getFileStatus(new Path(MinioFSSuiteTest.getRootPath(), "test3/subdir")) == null;
             } catch (FileNotFoundException ne) {
                 assert true;
             }
             try {
-                assert MinioFSSuiteTest.getMinioUtil().getFileStatus(new Path(MinioFSSuiteTest.getRootPath(), "/test3")) == null;
+                assert MinioFSSuiteTest.getMinioUtil().getFileStatus(new Path(MinioFSSuiteTest.getRootPath(), "test3")) == null;
             } catch (FileNotFoundException ne) {
                 assert true;
             }
@@ -160,10 +167,11 @@ public class MinioUtilTest {
     @Test
     public void testDeleteFolderRecursiveFailNonEmpty() {
         try {
-            Path p = new Path(MinioFSSuiteTest.getRootPath(), "/test3/subdir/subsubdir");
+            Path p = new Path(MinioFSSuiteTest.getRootPath(), "test3/subdir/subsubdir");
+            Path parent = new Path(MinioFSSuiteTest.getRootPath(), "test3");
             assert MinioFSSuiteTest.getMinioUtil().mkdirs(p) == true;
             assert MinioFSSuiteTest.getMinioUtil().getFileStatus(p).isDirectory();
-            assert MinioFSSuiteTest.getMinioUtil().delete(new Path(MinioFSSuiteTest.getRootPath(), "test3"), false);
+            assert MinioFSSuiteTest.getMinioUtil().delete(parent, false);
             assert false;
         } catch (IOException e) {
             assert true;
@@ -173,10 +181,10 @@ public class MinioUtilTest {
     @Test
     public void testListStatus() {
         try {
-            Path parent = new Path(MinioFSSuiteTest.getRootPath(), "/listnr");
-            Path path1 = new Path(MinioFSSuiteTest.getRootPath(), "/listnr/path1");
-            Path path2 = new Path(MinioFSSuiteTest.getRootPath(), "/listnr/path2");
-            Path path3 = new Path(MinioFSSuiteTest.getRootPath(), "/listnr/path2/path3");
+            Path parent = new Path(MinioFSSuiteTest.getRootPath(), "listnr");
+            Path path1 = new Path(MinioFSSuiteTest.getRootPath(), "listnr/path1");
+            Path path2 = new Path(MinioFSSuiteTest.getRootPath(), "listnr/path2");
+            Path path3 = new Path(MinioFSSuiteTest.getRootPath(), "listnr/path2/path3");
 
             Path[] childs = new Path[]{path1, path2};
             Path[] paths = new Path[]{parent, path1, path2, path3};
@@ -200,10 +208,10 @@ public class MinioUtilTest {
     @Test
     public void testListStatusRecursive() {
         try {
-            Path parent = new Path(MinioFSSuiteTest.getRootPath(), "/listr");
-            Path path1 = new Path(MinioFSSuiteTest.getRootPath(), "/listr/path1");
-            Path path2 = new Path(MinioFSSuiteTest.getRootPath(), "/listr/path2");
-            Path path3 = new Path(MinioFSSuiteTest.getRootPath(), "/listr/path2/path3");
+            Path parent = new Path(MinioFSSuiteTest.getRootPath(), "listr");
+            Path path1 = new Path(MinioFSSuiteTest.getRootPath(), "listr/path1");
+            Path path2 = new Path(MinioFSSuiteTest.getRootPath(), "listr/path2");
+            Path path3 = new Path(MinioFSSuiteTest.getRootPath(), "listr/path2/path3");
 
             Path[] childs = new Path[]{path1, path2, path3};
             Path[] paths = new Path[]{parent, path1, path2, path3};
@@ -218,7 +226,7 @@ public class MinioUtilTest {
                 logger.debug("returned file status {}", fileStatus);
                 boolean found = false;
                 for (var c : childs) {
-                    if (fileStatus.getPath().equals(c)) {
+                    if (fileStatus.getPath().toUri().getPath().equals(c.toUri().getPath())) {
                         found = true;
                     }
                 }
@@ -237,8 +245,8 @@ public class MinioUtilTest {
     @Test
     public void testRenameFile() {
         try {
-            Path pathSrc = new Path(MinioFSSuiteTest.getRootPath(), "/renamenr/path2/src");
-            Path pathDst = new Path(MinioFSSuiteTest.getRootPath(), "/renamenr/path2/dst");
+            Path pathSrc = new Path(MinioFSSuiteTest.getRootPath(), "renamenr/path2/src");
+            Path pathDst = new Path(MinioFSSuiteTest.getRootPath(), "renamenr/path2/dst");
             assert MinioFSSuiteTest.getMinioUtil().mkdirs(pathSrc);
             assert MinioFSSuiteTest.getMinioUtil().rename(pathSrc, pathDst);
             FileStatus fileStatus = MinioFSSuiteTest.getMinioUtil().getFileStatus(pathDst);
@@ -253,16 +261,16 @@ public class MinioUtilTest {
     @Test
     public void testRenameFileRecursive() {
         try {
-            Path pathWithChilds = new Path(MinioFSSuiteTest.getRootPath(), "/renamer/child1/child2");
+            Path pathWithChilds = new Path(MinioFSSuiteTest.getRootPath(), "renamer/child1/child2");
 
-            Path pathSrc = new Path(MinioFSSuiteTest.getRootPath(), "/renamer");
-            Path pathDst = new Path(MinioFSSuiteTest.getRootPath(), "/renamer-new");
+            Path pathSrc = new Path(MinioFSSuiteTest.getRootPath(), "renamer");
+            Path pathDst = new Path(MinioFSSuiteTest.getRootPath(), "renamer-new");
             assert MinioFSSuiteTest.getMinioUtil().mkdirs(pathWithChilds);
 
             assert MinioFSSuiteTest.getMinioUtil().rename(pathSrc, pathDst);
 
-            Path pathNewChild1 = new Path(MinioFSSuiteTest.getRootPath(), "/renamer-new/child1");
-            Path pathNewChild2 = new Path(MinioFSSuiteTest.getRootPath(), "/renamer-new/child1/child2");
+            Path pathNewChild1 = new Path(MinioFSSuiteTest.getRootPath(), "renamer-new/child1");
+            Path pathNewChild2 = new Path(MinioFSSuiteTest.getRootPath(), "renamer-new/child1/child2");
 
             FileStatus fileStatus;
 

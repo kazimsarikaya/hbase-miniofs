@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.security.SecureRandom;
 import org.apache.hadoop.fs.Path;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,11 +37,16 @@ public class MinioInputStreamTest {
         MinioFSSuiteTest.init();
     }
 
+    @BeforeEach
+    public void cleanup() throws Exception {
+        MinioFSSuiteTest.cleanUp();
+    }
+
     @Test
     public void testCreateFile() {
 
         try {
-            Path rw = new Path("minio://test/mistest/file1");
+            Path rw = new Path(MinioFSSuiteTest.getRootPath(), "mistest/file1");
 
             HashFunction sha256 = Hashing.sha256();
             SecureRandom random = new SecureRandom();
