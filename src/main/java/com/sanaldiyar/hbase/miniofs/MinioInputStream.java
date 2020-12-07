@@ -17,6 +17,7 @@ limitations under the License.
 package com.sanaldiyar.hbase.miniofs;
 
 import java.io.IOException;
+import java.util.List;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSInputStream;
 import org.apache.hadoop.fs.FileStatus;
@@ -38,14 +39,33 @@ public class MinioInputStream extends FSInputStream {
     private final byte[] buffer;
     private final Path path;
     private final Configuration conf;
+    private final String key;
 
     public MinioInputStream(Path path, Configuration conf, long bufferSize) throws IOException {
+        this.key = minioUtil.getPrefix(path);
+        List<String> locks = MinioFileSystem.getLocks();
+        synchronized (locks) {
+            if (!locks.contains(key)) {
+                locks.add(key);
+                logger.debug("LOCK lock added for path {}", path);
+            }
+        }
         this.path = path;
         this.conf = conf;
         this.buffer = new byte[(int) bufferSize];
         FileStatus fs = minioUtil.getFileStatus(path);
         filesize = fs.getLen();
         fillBuffer(0);
+    }
+
+    @Override
+    public void close() throws IOException {
+        super.close();
+        List<String> locks = MinioFileSystem.getLocks();
+        synchronized (locks) {
+            locks.remove(key);
+            logger.debug("LOCK lock removed for path {}", path);
+        }
     }
 
     private void fillBuffer(long start) throws IOException {

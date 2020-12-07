@@ -20,6 +20,7 @@ import com.sanaldiyar.hbase.miniofs.MinioFileSystem;
 import java.io.IOException;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HBaseConfiguration;
+import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.master.HMaster;
 import org.apache.hadoop.hbase.regionserver.HRegionServer;
 import org.slf4j.Logger;
@@ -36,6 +37,7 @@ public class HBaseMain {
 
         conf.setBoolean("hbase.cluster.distributed", true);
         conf.setBoolean("hbase.unsafe.stream.capability.enforce", false);
+        conf.setInt("hbase.master.namespace.init.timeout", 1000 * 60 * 60);
 
         if (args.length < 1) {
             logger.error("master/region type param should be given");
@@ -56,8 +58,8 @@ public class HBaseMain {
                     int masterServerInfoPort = 16010;
                     masterServerPort += portIncrease;
                     masterServerInfoPort += portIncrease;
-                    conf.setInt("hbase.master.port", masterServerPort);
-                    conf.setInt("hbase.master.info.port", masterServerInfoPort);
+                    conf.setInt(HConstants.MASTER_PORT, masterServerPort);
+                    conf.setInt(HConstants.MASTER_INFO_PORT, masterServerInfoPort);
                     regionServer = new HMaster(conf);
                     break;
                 case "region":
@@ -65,8 +67,8 @@ public class HBaseMain {
                     int regionServerInfoPort = 16030;
                     regionServerPort += portIncrease;
                     regionServerInfoPort += portIncrease;
-                    conf.setInt("hbase.regionserver.port", regionServerPort);
-                    conf.setInt("hbase.regionserver.info.port", regionServerInfoPort);
+                    conf.setInt(HConstants.REGIONSERVER_PORT, regionServerPort);
+                    conf.setInt(HConstants.REGIONSERVER_INFO_PORT, regionServerInfoPort);
                     regionServer = new HRegionServer(conf);
                     break;
                 default:

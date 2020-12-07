@@ -58,6 +58,8 @@ import org.slf4j.LoggerFactory;
 
 public class MinioUtil implements Configurable {
 
+    private final static Logger logger = LoggerFactory.getLogger(MinioUtil.class.getName());
+
     public final static String MINIO_METADATA_BLOCK_SIZE = "hbase.fs.file.blocksize";
 
     private String endpoint;
@@ -66,8 +68,6 @@ public class MinioUtil implements Configurable {
     private MinioClient client;
     private String bucket;
     private Configuration conf;
-
-    private final static Logger logger = LoggerFactory.getLogger(MinioUtil.class.getName());
 
     private final static MinioUtil instance = new MinioUtil();
 
@@ -110,7 +110,7 @@ public class MinioUtil implements Configurable {
         return uri;
     }
 
-    private String getPrefix(Path path) throws IOException {
+    public String getPrefix(Path path) throws IOException {
         String strPath = null;
         if (path.isAbsolute()) {
             strPath = path.toUri().getPath();

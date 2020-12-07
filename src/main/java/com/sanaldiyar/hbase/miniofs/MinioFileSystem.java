@@ -19,7 +19,10 @@ package com.sanaldiyar.hbase.miniofs;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URI;
+import java.util.Collections;
 import java.util.EnumSet;
+import java.util.LinkedList;
+import java.util.List;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.CreateFlag;
 import org.apache.hadoop.fs.FSDataInputStream;
@@ -27,6 +30,7 @@ import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileAlreadyExistsException;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.ParentNotDirectoryException;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.util.Progressable;
@@ -43,11 +47,17 @@ public class MinioFileSystem extends FileSystem {
 
     private final static Logger logger = LoggerFactory.getLogger(MinioFileSystem.class.getName());
 
+    private final static List<String> locks = Collections.synchronizedList(new LinkedList<String>());
+
     private URI uri;
     private Path workingDir;
     private final MinioUtil minioUtil = MinioUtil.getInstance();
 
     public MinioFileSystem() {
+    }
+
+    public static List<String> getLocks() {
+        return locks;
     }
 
     @Override
@@ -105,6 +115,9 @@ public class MinioFileSystem extends FileSystem {
 
     private FSDataOutputStream create_internal(Path path, FsPermission perm, boolean override, int bufferSize, short replication, long blockSize, Progressable p, boolean recursive) throws IOException {
         path = makeAbsolute(path);
+        if (!checkLock(path)) {
+            throw new IOException(String.format("path is locked %s", path));
+        }
         logger.debug("new file will be created for {}", path);
         Path parent = path.getParent();
         if (recursive) {
@@ -112,7 +125,7 @@ public class MinioFileSystem extends FileSystem {
         } else {
             FileStatus p_fs = getFileStatus(parent);
             if (!p_fs.isDirectory()) {
-                throw new IOException(String.format("cannot create file %s parent %s is not directory", path, parent));
+                throw new ParentNotDirectoryException(String.format("cannot create file %s parent %s is not directory", path, parent));
             }
         }
         if (override) {
@@ -133,15 +146,53 @@ public class MinioFileSystem extends FileSystem {
         return new FSDataOutputStream(mos, null);
     }
 
+    private boolean checkLock(Path path) throws IOException {
+        String searchKey = minioUtil.getPrefix(path);
+        boolean islocked = true;
+        while (islocked) {
+            logger.debug("CHECKLOCK checking lock for path {}", path);
+            islocked = false;
+            synchronized (locks) {
+                for (var lock : locks) {
+                    if (lock.startsWith(searchKey)) {
+                        logger.debug("CHECKLOCK lock for path {} by path {}", path, lock);
+                        islocked = true;
+                        break;
+                    }
+                }
+            }
+            if (islocked) {
+                try {
+                    logger.debug("CHECKLOCK lock found for path {} sleeping 100ms", path);
+                    Thread.sleep(100);
+                } catch (InterruptedException ex) {
+                    logger.error("lock holding interrupted", ex);
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
     @Override
     public boolean rename(Path source, Path destination) throws IOException {
+        source = makeAbsolute(source);
+        destination = makeAbsolute(destination);
         logger.debug("renaming old path {} to new path {}", source, destination);
-        return minioUtil.rename(makeAbsolute(source), makeAbsolute(destination));
+        if (!checkLock(source)) {
+            return false;
+        }
+        return minioUtil.rename(source, destination);
     }
 
     @Override
     public boolean delete(Path path, boolean recursive) throws IOException {
-        return minioUtil.delete(makeAbsolute(path), recursive);
+        path = makeAbsolute(path);
+        logger.debug("deleting path {} with {}", path, recursive);
+        if (!checkLock(path)) {
+            return false;
+        }
+        return minioUtil.delete(path, recursive);
     }
 
     @Override

@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.MultipartUploader;
@@ -37,6 +38,7 @@ import org.slf4j.LoggerFactory;
 public class MinioOutputStream extends OutputStream {
 
     private final static Logger logger = LoggerFactory.getLogger(MinioOutputStream.class.getName());
+    private final MinioUtil minioUtil = MinioUtil.getInstance();
 
     private final Configuration conf;
     private final MultipartUploader uploader;
@@ -51,8 +53,15 @@ public class MinioOutputStream extends OutputStream {
     private OutputStream backendStream;
     private boolean closed;
     private long totalWriten = 0;
+    private final String key;
 
     public MinioOutputStream(Path path, Configuration conf) throws IOException {
+        this.key = minioUtil.getPrefix(path);
+        List<String> locks = MinioFileSystem.getLocks();
+        synchronized (locks) {
+            locks.add(key);
+            logger.debug("LOCK lock added for path {}", path);
+        }
         this.path = path;
         this.conf = conf;
         this.uploader = MinioMultipartUploader.Factory.get(path.getFileSystem(conf), conf);
@@ -124,6 +133,11 @@ public class MinioOutputStream extends OutputStream {
         backendFile = null;
         backendStream = null;
         logger.debug("{} bytes of data writen to the destination {}", totalWriten, path);
+        List<String> locks = MinioFileSystem.getLocks();
+        synchronized (locks) {
+            locks.remove(key);
+            logger.debug("LOCK lock removed for path {}", path);
+        }
     }
 
     private synchronized void uploadPart(boolean lastPart) throws IOException {
