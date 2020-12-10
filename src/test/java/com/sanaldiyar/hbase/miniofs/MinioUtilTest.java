@@ -282,4 +282,24 @@ public class MinioUtilTest extends BaseTestClass {
             assert false;
         }
     }
+
+    @Test
+    @DisplayName("Test listing more than 1000 items")
+    public void testMoreThan1000Items() {
+        try {
+            Path testPath = new Path(getRootPath(), "mt1kitems");
+            for (int i = 0; i < 1005; i++) {
+                Path item = new Path(testPath, String.format("item-%d", i));
+                getMinioUtil().mkdirs(item);
+            }
+
+            FileStatus[] listStatus = getMinioUtil().listStatus(testPath);
+
+            assert listStatus.length == 1005;
+
+        } catch (IOException ex) {
+            logger.error("test failed", ex);
+            assert false;
+        }
+    }
 }

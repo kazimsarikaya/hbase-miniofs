@@ -170,37 +170,52 @@ public class MinioUtil implements Configurable {
         try {
             String prefix = convertDirPrefix(path);
 
-            Iterable<Result<Item>> results;
+            boolean fetchNext = true;
+            String lastKey = "";
 
-            if (prefix.equals("/")) {
-                results = client.listObjects(ListObjectsArgs.builder()
+            while (fetchNext) {
+
+                Iterable<Result<Item>> results;
+
+                ListObjectsArgs.Builder builder = ListObjectsArgs.builder()
                         .bucket(bucket)
                         .useUrlEncodingType(true)
-                        .recursive(recursive)
-                        .build());
-            } else {
-                results = client.listObjects(ListObjectsArgs.builder()
-                        .bucket(bucket)
-                        .useUrlEncodingType(true)
-                        .recursive(recursive)
-                        .prefix(prefix)
-                        .build());
-            }
+                        .recursive(recursive);
 
-            for (Result<Item> result : results) {
-                Item item = result.get();
-                String strItemPath = item.objectName();
-                Path itemPath = new Path(rootPath, strItemPath);
-                if (path.toUri().equals(itemPath.toUri())) {
-                    continue;
+                if (!prefix.equals("/")) {
+                    builder = builder.prefix(prefix);
                 }
-                boolean isDir = false;
-                if (strItemPath.endsWith("/")) {
-                    isDir = true;
+
+                if (!lastKey.isEmpty()) {
+                    builder = builder.startAfter(lastKey);
+                    lastKey = "";
                 }
-                FileStatus fs = new FileStatus(new MinioFileStatus(itemPath, isDir, item.size()));
-                logger.trace("path found {} isDir {} size {}", fs.getPath(), fs.isDirectory(), fs.getLen());
-                statuses.add(fs);
+
+                results = client.listObjects(builder.build());
+
+                int itemCnt = 0;
+
+                for (Result<Item> result : results) {
+                    Item item = result.get();
+                    String strItemPath = item.objectName();
+                    lastKey = strItemPath;
+                    Path itemPath = new Path(rootPath, strItemPath);
+                    if (path.toUri().equals(itemPath.toUri())) {
+                        continue;
+                    }
+                    boolean isDir = false;
+                    if (strItemPath.endsWith("/")) {
+                        isDir = true;
+                    }
+                    FileStatus fs = new FileStatus(new MinioFileStatus(itemPath, isDir, item.size()));
+                    logger.trace("path found {} isDir {} size {}", fs.getPath(), fs.isDirectory(), fs.getLen());
+                    statuses.add(fs);
+                    itemCnt++;
+                }
+
+                if (lastKey.isEmpty() || itemCnt < 1000) {
+                    fetchNext = false;
+                }
             }
 
         } catch (IllegalArgumentException | ErrorResponseException | InsufficientDataException | InternalException | InvalidKeyException | InvalidResponseException | JsonMappingException | JsonParseException | NoSuchAlgorithmException | ServerException | XmlParserException ex) {
