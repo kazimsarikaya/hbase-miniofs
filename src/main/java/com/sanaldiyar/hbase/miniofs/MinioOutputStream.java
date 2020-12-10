@@ -54,13 +54,14 @@ public class MinioOutputStream extends OutputStream {
     private boolean closed;
     private long totalWriten = 0;
     private final String key;
+    private MinioFileSystem fileSystem;
 
     public MinioOutputStream(Path path, Configuration conf) throws IOException {
         this.key = minioUtil.getPrefix(path);
         List<String> locks = MinioFileSystem.getLocks();
         synchronized (locks) {
             locks.add(key);
-            logger.debug("LOCK lock added for path {}", path);
+            logger.trace("LOCK lock added for path {}", path);
         }
         this.path = path;
         this.conf = conf;
@@ -71,6 +72,8 @@ public class MinioOutputStream extends OutputStream {
         this.backendStream = new BufferedOutputStream(new FileOutputStream(backendFile));
         this.closed = false;
         this.partSize = conf.getInt(MinioFileSystem.MINIO_UPLOAD_PART_SIZE, MinioFileSystem.MINIO_DEFAULT_PART_SIZE);
+        fileSystem = (MinioFileSystem) path.getFileSystem(conf);
+        logger.debug("file {} opened", path);
     }
 
     public MinioOutputStream(Path path, Configuration conf, int partSize) throws IOException {
@@ -84,7 +87,7 @@ public class MinioOutputStream extends OutputStream {
             throw new IOException("Cannot create tmp buffer directory: " + dir);
         }
         File result = File.createTempFile("output-", ".tmp", dir);
-        logger.debug("a new backend {} created for the path {}", result.toPath(), path);
+        logger.trace("a new backend {} created for the path {}", result.toPath(), path);
         result.deleteOnExit();
         return result;
     }
@@ -107,7 +110,7 @@ public class MinioOutputStream extends OutputStream {
             backendStream.write(buffer, offset, bytesCW);
             backendOffset += bytesCW;
             totalWriten += bytesCW;
-            logger.debug("{} bytes of data writen to the backend file {} from offset {} new position {} for path {}", bytesCW, backendFile.toPath(), offset, totalWriten, path);
+            logger.trace("{} bytes of data writen to the backend file {} from offset {} new position {} for path {}", bytesCW, backendFile.toPath(), offset, totalWriten, path);
             uploadPart(false);
             offset += bytesCW;
             len -= bytesCW;
@@ -115,7 +118,7 @@ public class MinioOutputStream extends OutputStream {
         backendStream.write(buffer, offset, len);
         backendOffset += len;
         totalWriten += len;
-        logger.debug("{} bytes of data writen to the backend file {} from offset {} new position {} for path {}", len, backendFile.toPath(), offset, totalWriten, path);
+        logger.trace("{} bytes of data writen to the backend file {} from offset {} new position {} for path {}", len, backendFile.toPath(), offset, totalWriten, path);
     }
 
     @Override
@@ -124,26 +127,28 @@ public class MinioOutputStream extends OutputStream {
     }
 
     @Override
-    public void close() throws IOException {
+    public synchronized void close() throws IOException {
         if (this.closed) {
             return;
         }
-        closed = true;
         uploadPart(true);
         backendFile = null;
         backendStream = null;
-        logger.debug("{} bytes of data writen to the destination {}", totalWriten, path);
+        logger.trace("{} bytes of data writen to the destination {}", totalWriten, path);
         List<String> locks = MinioFileSystem.getLocks();
         synchronized (locks) {
             locks.remove(key);
-            logger.debug("LOCK lock removed for path {}", path);
+            logger.trace("LOCK lock removed for path {}", path);
         }
+        fileSystem.getOutputStreams().remove(this);
+        closed = true;
+        logger.debug("file {} closed", path);
     }
 
     private synchronized void uploadPart(boolean lastPart) throws IOException {
         backendStream.flush();
         backendStream.close();
-        logger.debug("sending file {}", backendFile.toPath());
+        logger.trace("sending file {}", backendFile.toPath());
 
         InputStream is = new BufferedInputStream(new FileInputStream(backendFile));
 
@@ -164,7 +169,11 @@ public class MinioOutputStream extends OutputStream {
             backendFile = createBackendFile();
             backendStream = new BufferedOutputStream(new FileOutputStream(backendFile));
         }
-        logger.debug("sending file {} completed", backendFile.toPath());
+        logger.trace("sending file {} completed", backendFile.toPath());
+    }
+
+    public boolean isClosed() {
+        return closed;
     }
 
 }

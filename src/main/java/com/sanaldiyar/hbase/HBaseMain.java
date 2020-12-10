@@ -38,6 +38,8 @@ public class HBaseMain {
         conf.setBoolean("hbase.cluster.distributed", true);
         conf.setBoolean("hbase.unsafe.stream.capability.enforce", false);
         conf.setInt("hbase.master.namespace.init.timeout", 1000 * 60 * 60);
+        conf.setInt("io.file.buffer.size", MinioFileSystem.MINIO_DEFAULT_BUFFER_SIZE);
+        conf.setTimeDuration(MinioFileSystem.MINIO_DEFAULT_SHUTDOWN, 5, MinioFileSystem.MINIO_DEFAULT_SHUTDOWN_TIMEOUT_UNIT);
 
         if (args.length < 1) {
             logger.error("master/region type param should be given");
@@ -75,27 +77,19 @@ public class HBaseMain {
                     logger.error("unknown type");
                     System.exit(-1);
             }
-            regionServer.start();
 
-            Runtime.getRuntime().addShutdownHook(new Thread(new RegionShutdownHook(regionServer)));
-        } catch (IOException e) {
+            regionServer.run();
+            try {
+                regionServer.join();
+            } catch (InterruptedException ex) {
+                logger.error("error occured at region server {} exception {}", regionServer.getId(), ex);
+            }
+            logger.debug("region server stopped");
+
+        } catch (IOException ex) {
+            logger.error("error occured", ex);
         }
 
-    }
-
-}
-
-class RegionShutdownHook implements Runnable {
-
-    private final HRegionServer regionServer;
-
-    public RegionShutdownHook(HRegionServer regionServer) {
-        this.regionServer = regionServer;
-    }
-
-    @Override
-    public void run() {
-        regionServer.stop("stopping region server");
     }
 
 }

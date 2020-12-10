@@ -19,13 +19,14 @@ package com.sanaldiyar.hbase.miniofs;
 import java.io.IOException;
 import java.util.List;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.CanUnbuffer;
 import org.apache.hadoop.fs.FSInputStream;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.Path;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class MinioInputStream extends FSInputStream {
+public class MinioInputStream extends FSInputStream implements CanUnbuffer {
 
     private final static Logger logger = LoggerFactory.getLogger(MinioInputStream.class.getName());
 
@@ -40,6 +41,7 @@ public class MinioInputStream extends FSInputStream {
     private final Path path;
     private final Configuration conf;
     private final String key;
+    private boolean closed = false;
 
     public MinioInputStream(Path path, Configuration conf, long bufferSize) throws IOException {
         this.key = minioUtil.getPrefix(path);
@@ -47,7 +49,7 @@ public class MinioInputStream extends FSInputStream {
         synchronized (locks) {
             if (!locks.contains(key)) {
                 locks.add(key);
-                logger.debug("LOCK lock added for path {}", path);
+                logger.trace("LOCK lock added for path {}", path);
             }
         }
         this.path = path;
@@ -56,31 +58,37 @@ public class MinioInputStream extends FSInputStream {
         FileStatus fs = minioUtil.getFileStatus(path);
         filesize = fs.getLen();
         fillBuffer(0);
+        logger.info("file {} opened", path);
     }
 
     @Override
     public void close() throws IOException {
-        super.close();
         List<String> locks = MinioFileSystem.getLocks();
         synchronized (locks) {
             locks.remove(key);
-            logger.debug("LOCK lock removed for path {}", path);
+            logger.trace("LOCK lock removed for path {}", path);
         }
+        closed = true;
+        logger.info("file {} closed", path);
+    }
+
+    public boolean isClosed() {
+        return closed;
     }
 
     private void fillBuffer(long start) throws IOException {
         if (start == filesize) {
-            logger.debug("buffer will not be filled for path {} from {} len {} EOF", path.toUri().getPath(), start, buffer.length);
+            logger.trace("buffer will not be filled for path {} from {} len {} EOF", path.toUri().getPath(), start, buffer.length);
             bufferLength = 0;
         } else {
-            logger.debug("buffer will be filled for path {} from {} len {}", path.toUri().getPath(), start, buffer.length);
+            logger.trace("buffer will be filled for path {} from {} len {}", path.toUri().getPath(), start, buffer.length);
             bufferLength = minioUtil.fillData(path, start, buffer);
-            logger.debug("buffer  filled for path {} from {} len {}", path.toUri().getPath(), start, bufferLength);
+            logger.trace("buffer  filled for path {} from {} len {}", path.toUri().getPath(), start, bufferLength);
         }
         bufferStart = start;
         position = start;
         bufferPosition = 0;
-        logger.debug("after fill buffer new position {}", position);
+        logger.trace("after fill buffer new position {}", position);
     }
 
     @Override
@@ -92,7 +100,7 @@ public class MinioInputStream extends FSInputStream {
         } else {
             fillBuffer(pos);
         }
-        logger.debug("input stream position changed to {}", position);
+        logger.trace("input stream position changed to {}", position);
     }
 
     @Override
@@ -136,11 +144,11 @@ public class MinioInputStream extends FSInputStream {
 
         while (len > 0) {
             int avail = bufferLength - bufferPosition;
-            if (avail == 0) {
-                logger.debug("need buffer filling");
+            if (avail <= 0) {
+                logger.trace("need buffer filling");
                 fillBuffer(position);
                 avail = bufferLength - bufferPosition;
-                logger.debug("buffer filled");
+                logger.trace("buffer filled");
             }
 
             int maxRead = len;
@@ -157,14 +165,14 @@ public class MinioInputStream extends FSInputStream {
             }
 
             System.arraycopy(buffer, bufferPosition, data, off, maxRead);
-            logger.debug("buffer copied from {} to {} with len {}", bufferPosition, off, maxRead);
+            logger.trace("buffer copied from {} to {} with len {}", bufferPosition, off, maxRead);
             len -= maxRead;
             off += maxRead;
             bufferPosition += maxRead;
             readed += maxRead;
             position += maxRead;
         }
-        logger.debug("data readed from file {} to offset {} with len {} requested len {} new position {} old_position {}", path.toUri().getPath(), off_backup, readed, len_backup, position, pos_backup);
+        logger.trace("data readed from file {} to offset {} with len {} requested len {} new position {} old_position {}", path.toUri().getPath(), off_backup, readed, len_backup, position, pos_backup);
         if (readed == 0) {
             return -1;
         }
@@ -174,6 +182,12 @@ public class MinioInputStream extends FSInputStream {
     @Override
     public boolean seekToNewSource(long targetPos) throws IOException {
         throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public void unbuffer() {
+        bufferPosition = buffer.length;
+        bufferLength = 0;
     }
 
 }

@@ -23,6 +23,9 @@ import java.util.Collections;
 import java.util.EnumSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.CreateFlag;
 import org.apache.hadoop.fs.FSDataInputStream;
@@ -34,6 +37,7 @@ import org.apache.hadoop.fs.ParentNotDirectoryException;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.util.Progressable;
+import org.apache.hadoop.util.ShutdownHookManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,20 +48,29 @@ public class MinioFileSystem extends FileSystem {
     public final static String MINIO_ROOT = "hbase.rootdir";
     public final static int MINIO_DEFAULT_PART_SIZE = 5 << 20;
     public final static int MINIO_DEFAULT_BUFFER_SIZE = 128 << 10;
+    public final static String MINIO_DEFAULT_SHUTDOWN = "fs.minio.shutdown.timeout";
+    public final static long MINIO_DEFAULT_SHUTDOWN_TIMEOUT = 5;
+    public final static TimeUnit MINIO_DEFAULT_SHUTDOWN_TIMEOUT_UNIT = TimeUnit.MINUTES;
 
     private final static Logger logger = LoggerFactory.getLogger(MinioFileSystem.class.getName());
 
-    private final static List<String> locks = Collections.synchronizedList(new LinkedList<String>());
+    private final static List<String> locks = Collections.synchronizedList(new LinkedList<>());
 
     private URI uri;
     private Path workingDir;
     private final MinioUtil minioUtil = MinioUtil.getInstance();
+    private final List<MinioOutputStream> outputStreams = Collections.synchronizedList(new LinkedList<>());
+    private boolean closed = false;
 
     public MinioFileSystem() {
     }
 
     public static List<String> getLocks() {
         return locks;
+    }
+
+    List<MinioOutputStream> getOutputStreams() {
+        return outputStreams;
     }
 
     @Override
@@ -67,7 +80,8 @@ public class MinioFileSystem extends FileSystem {
         this.uri = minioUtil.getUri();
         this.workingDir = new Path(uri);
         logger.debug("workingdir {}", workingDir);
-
+        long timeout = conf.getTimeDuration(MINIO_DEFAULT_SHUTDOWN, MINIO_DEFAULT_SHUTDOWN_TIMEOUT, MINIO_DEFAULT_SHUTDOWN_TIMEOUT_UNIT, MINIO_DEFAULT_SHUTDOWN_TIMEOUT_UNIT);
+        ShutdownHookManager.get().addShutdownHook(new Thread(new ShutdownHook(this)), SHUTDOWN_HOOK_PRIORITY, timeout, TimeUnit.MINUTES);
         setConf(conf);
         super.initialize(name, conf);
     }
@@ -89,7 +103,6 @@ public class MinioFileSystem extends FileSystem {
     @Override
     public FSDataInputStream open(Path path, int bufferSize) throws IOException {
         path = makeAbsolute(path);
-        logger.debug("try to open path {} with buffer {}", path.toUri().getPath(), bufferSize);
         try {
             FileStatus fs = getFileStatus(path);
             if (!fs.isFile()) {
@@ -99,6 +112,7 @@ public class MinioFileSystem extends FileSystem {
             throw ex;
         }
         MinioInputStream mis = new MinioInputStream(path, getConf(), getDefaultBlockSize(path));
+        logger.debug("file {} opened with buffer {}", path, bufferSize);
         return new FSDataInputStream(mis);
     }
 
@@ -118,7 +132,6 @@ public class MinioFileSystem extends FileSystem {
         if (!checkLock(path)) {
             throw new IOException(String.format("path is locked %s", path));
         }
-        logger.debug("new file will be created for {}", path);
         Path parent = path.getParent();
         if (recursive) {
             mkdirs(parent, perm);
@@ -143,19 +156,22 @@ public class MinioFileSystem extends FileSystem {
             }
         }
         MinioOutputStream mos = new MinioOutputStream(path, getConf());
-        return new FSDataOutputStream(mos, null);
+        FSDataOutputStream outputStream = new FSDataOutputStream(mos, null);
+        outputStreams.add(mos);
+        logger.info("new file will be created for {}", path);
+        return outputStream;
     }
 
     private boolean checkLock(Path path) throws IOException {
         String searchKey = minioUtil.getPrefix(path);
         boolean islocked = true;
         while (islocked) {
-            logger.debug("CHECKLOCK checking lock for path {}", path);
+            logger.trace("CHECKLOCK checking lock for path {}", path);
             islocked = false;
             synchronized (locks) {
                 for (var lock : locks) {
                     if (lock.startsWith(searchKey)) {
-                        logger.debug("CHECKLOCK lock for path {} by path {}", path, lock);
+                        logger.trace("CHECKLOCK lock for path {} by path {}", path, lock);
                         islocked = true;
                         break;
                     }
@@ -163,7 +179,7 @@ public class MinioFileSystem extends FileSystem {
             }
             if (islocked) {
                 try {
-                    logger.debug("CHECKLOCK lock found for path {} sleeping 100ms", path);
+                    logger.trace("CHECKLOCK lock found for path {} sleeping 100ms", path);
                     Thread.sleep(100);
                 } catch (InterruptedException ex) {
                     logger.error("lock holding interrupted", ex);
@@ -192,7 +208,9 @@ public class MinioFileSystem extends FileSystem {
         if (!checkLock(path)) {
             return false;
         }
-        return minioUtil.delete(path, recursive);
+        boolean result = minioUtil.delete(path, recursive);
+        logger.info("path {} {} deleted with option recursive={}", path, result ? "can" : "cannot", recursive);
+        return result;
     }
 
     @Override
@@ -234,9 +252,64 @@ public class MinioFileSystem extends FileSystem {
         return new Path(workingDir, path);
     }
 
+    public synchronized void internalClose() throws IOException {
+
+    }
+
+//    @Override
+//    public void close() throws IOException {
+//        internalClose();
+//        super.close();
+//    }
+    public boolean isClosed() {
+        return closed;
+    }
+
     @Override
     public FSDataOutputStream append(Path path, int bufferSize, Progressable p) throws IOException {
         throw new UnsupportedOperationException("Minio File System does not support append");
+    }
+
+    static class ShutdownHook implements Runnable {
+
+        private final MinioFileSystem fileSystem;
+        private final static Executor executor = Executors.newFixedThreadPool(10);
+
+        public ShutdownHook(MinioFileSystem fileSystem) {
+            this.fileSystem = fileSystem;
+        }
+
+        @Override
+        public void run() {
+            logger.debug("closing file system {}", this.toString());
+            for (var os : fileSystem.getOutputStreams()) {
+                executor.execute(() -> {
+                    try {
+                        if (fileSystem.isClosed()) {
+                            return;
+                        }
+                        if (!os.isClosed()) {
+                            try {
+                                logger.debug("closing output steam {}", os.toString());
+                                os.close();
+                                logger.debug("output steam {} closed", os.toString());
+
+                            } catch (IOException e) {
+                                logger.error("error at closing output stream {} , error: {}", os.toString(), e);
+                                throw e;
+                            }
+                        }
+
+                    } catch (IOException ex) {
+                        logger.error("error at shutdown", ex);
+                    }
+                });
+            }
+            fileSystem.closed = true;
+            logger.debug("file system {} closed", this.toString());
+
+        }
+
     }
 
 }

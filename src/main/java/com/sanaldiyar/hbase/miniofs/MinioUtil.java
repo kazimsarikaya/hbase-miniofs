@@ -87,11 +87,11 @@ public class MinioUtil implements Configurable {
             }
             String hostPort = tmpUri.getHost() + ":" + String.valueOf(port);
             this.endpoint = "http://" + hostPort;
-            logger.debug("minio endpoint address: {}", endpoint);
+            logger.trace("minio endpoint address: {}", endpoint);
             this.bucket = tmpUri.getPath().substring(1);
             String authority = tmpUri.getUserInfo();
             String[] up = authority.split(":");
-            logger.debug("bucket {} username {} password {}", bucket, up[0], up[1]);
+            logger.trace("bucket {} username {}", bucket, up[0]);
             uri = new URI(tmpUri.getScheme(), null, tmpUri.getHost(), port, tmpUri.getPath(), null, null);
             this.rootPath = new Path(uri);
             this.client = MinioClient.builder().
@@ -146,7 +146,7 @@ public class MinioUtil implements Configurable {
     }
 
     public FileStatus[] listStatus(Path path) throws FileNotFoundException, IOException {
-        logger.debug("listing status of {} {}", path.toUri().getPath(), path.toString());
+        logger.trace("listing status of {} {}", path.toUri().getPath(), path.toString());
         return listStatus(path, false);
     }
 
@@ -155,7 +155,7 @@ public class MinioUtil implements Configurable {
         try {
             base_fs = getFileStatus(path);
         } catch (FileNotFoundException ex) {
-            logger.debug("path {} not exists", path);
+            logger.trace("path {} not exists", path);
             throw ex;
         } catch (IOException ex) {
             throw ex;
@@ -199,7 +199,7 @@ public class MinioUtil implements Configurable {
                     isDir = true;
                 }
                 FileStatus fs = new FileStatus(new MinioFileStatus(itemPath, isDir, item.size()));
-                logger.debug("path found {} isDir {} size {}", fs.getPath(), fs.isDirectory(), fs.getLen());
+                logger.trace("path found {} isDir {} size {}", fs.getPath(), fs.isDirectory(), fs.getLen());
                 statuses.add(fs);
             }
 
@@ -210,13 +210,13 @@ public class MinioUtil implements Configurable {
 
         FileStatus[] fses = new FileStatus[statuses.size()];
         statuses.toArray(fses);
-        logger.debug("listing returned {} paths", fses.length);
+        logger.trace("listing returned {} paths", fses.length);
         return fses;
     }
 
     public FileStatus getFileStatus(Path path) throws IOException {
         String basePath = getPrefix(path);
-        logger.debug("get status of path {}", basePath);
+        logger.trace("get status of path {}", basePath);
 
         if (basePath.isEmpty()) { //root
             return new FileStatus(new MinioFileStatus(path, true, 0));
@@ -230,19 +230,19 @@ public class MinioUtil implements Configurable {
                     .object(basePath)
                     .build());
         } catch (InvalidKeyException | InsufficientDataException | InternalException | InvalidResponseException | NoSuchAlgorithmException | ServerException | XmlParserException ex) {
-            logger.debug(null, ex);
+            logger.trace(null, ex);
             throw new IOException(String.format("cannot stat path: {}", path.toString()));
         } catch (ErrorResponseException ex) {
             if (ex.response().code() == 404) {
                 try {
-                    logger.debug("probably not file, try as folder: {}", basePath);
+                    logger.trace("probably not file, try as folder: {}", basePath);
                     stat = client.statObject(StatObjectArgs.builder()
                             .bucket(bucket)
                             .object(basePath + "/")
                             .build());
                     isDir = true;
                 } catch (InvalidKeyException | InsufficientDataException | InternalException | InvalidResponseException | NoSuchAlgorithmException | ServerException | XmlParserException ex1) {
-                    logger.debug(null, ex1);
+                    logger.trace(null, ex1);
                 } catch (ErrorResponseException ex1) {
                     if (ex1.response().code() == 404) {
                         throw new FileNotFoundException(basePath);
@@ -265,7 +265,7 @@ public class MinioUtil implements Configurable {
 
     public synchronized boolean mkdirs(Path path) throws IOException {
         Path orig_path = path;
-        logger.debug("the dir will be created {}", orig_path.toUri().getPath());
+        logger.trace("the dir will be created {}", orig_path.toUri().getPath());
 
         Stack<Path> dirs = new Stack<>();
 
@@ -297,7 +297,7 @@ public class MinioUtil implements Configurable {
                             .stream(new ByteArrayInputStream(new byte[]{}), 0, -1)
                             .build());
                 } catch (ErrorResponseException | InsufficientDataException | InternalException | InvalidResponseException | ServerException | XmlParserException | IOException | IllegalArgumentException | InvalidKeyException | NoSuchAlgorithmException ex) {
-                    logger.debug(null, ex);
+                    logger.trace(null, ex);
                     throw new IOException("cannot create directory", ex);
                 }
             } catch (IOException ex) {
@@ -305,13 +305,13 @@ public class MinioUtil implements Configurable {
             }
 
         }
-        logger.debug("the dir created {}", orig_path.toUri().getPath());
+        logger.trace("the dir created {}", orig_path.toUri().getPath());
 
         return true;
     }
 
     public synchronized boolean delete(Path path, boolean recursive) throws IOException {
-        logger.debug("try to delete path {}", path.toString());
+        logger.trace("try to delete path {}", path.toString());
         FileStatus fs;
         try {
             fs = getFileStatus(path);
@@ -339,7 +339,7 @@ public class MinioUtil implements Configurable {
         }
         deleteItem(path, fs.isDirectory());
 
-        logger.debug("delete path suceeded {}", path.toUri().getPath());
+        logger.trace("delete path suceeded {}", path.toUri().getPath());
         return true;
     }
 
@@ -354,7 +354,7 @@ public class MinioUtil implements Configurable {
                     .object(itemPath)
                     .build()
             );
-            logger.debug("path {} deleted", path.toUri().getPath());
+            logger.trace("path {} deleted", path.toUri().getPath());
         } catch (ErrorResponseException | InsufficientDataException | InternalException | InvalidKeyException | InvalidResponseException | NoSuchAlgorithmException | ServerException | XmlParserException ex) {
             logger.error("cannot delete item", ex);
         }
@@ -362,17 +362,17 @@ public class MinioUtil implements Configurable {
 
     public void putStream(Path path, InputStream is, long len) throws IOException {
         try {
-            logger.debug("try to upload object to path {} with len {}", path.toString(), len);
+            logger.trace("try to upload object to path {} with len {}", path.toString(), len);
             mkdirs(path.getParent());
             String key = getPrefix(path);
-            logger.debug("dst key will be: {}", key);
+            logger.trace("dst key will be: {}", key);
             ObjectWriteResponse resp = client.putObject(PutObjectArgs.builder()
                     .bucket(bucket)
                     .object(key)
                     .stream(is, len, getDefaultPartSize())
                     .build());
 
-            logger.debug("upload object to path {} with len {} suceeded. etag: {}", path.toString(), len, resp.etag());
+            logger.trace("upload object to path {} with len {} suceeded. etag: {}", path.toString(), len, resp.etag());
         } catch (ErrorResponseException | InsufficientDataException | InternalException | InvalidKeyException | InvalidResponseException | NoSuchAlgorithmException | ServerException | XmlParserException ex) {
             logger.error("cannot put inputstream as object", ex);
             throw new IOException("cannot put inputstream as object", ex);
@@ -401,7 +401,7 @@ public class MinioUtil implements Configurable {
         for (Path item : items) {
             String strPath = getPrefix(item);
             sources.add(ComposeSource.builder().bucket(bucket).object(strPath).build());
-            logger.debug("source added: {}", strPath);
+            logger.trace("source added: {}", strPath);
         }
 
         try {
@@ -412,7 +412,7 @@ public class MinioUtil implements Configurable {
                             .object(strDst)
                             .sources(sources)
                             .build());
-            logger.debug("object merged to the path {}", strDst);
+            logger.trace("object merged to the path {}", strDst);
         } catch (ErrorResponseException | InsufficientDataException | InternalException | InvalidKeyException | InvalidResponseException | NoSuchAlgorithmException | ServerException | XmlParserException ex) {
             logger.error("cannot merge items", ex);
             throw new IOException("cannot merge items", ex);

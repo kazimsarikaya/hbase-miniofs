@@ -19,6 +19,7 @@ package com.sanaldiyar.hbase.miniofs;
 import java.util.Date;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.permission.FsPermission;
 
 /**
  *
@@ -67,6 +68,14 @@ public class MinioFileStatus extends FileStatus {
     @Override
     public String getGroup() {
         return "miniofs";
+    }
+
+    @Override
+    public FsPermission getPermission() {
+        if (isDir) {
+            return new FsPermission("0755");
+        }
+        return new FsPermission("0644");
     }
 
     @Override
