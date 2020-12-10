@@ -22,38 +22,26 @@ import com.google.common.hash.Hashing;
 import java.io.IOException;
 import java.security.SecureRandom;
 import org.apache.hadoop.fs.Path;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class MinioInputStreamTest {
+public class MinioInputStreamTest extends BaseTestClass {
 
     private final static Logger logger = LoggerFactory.getLogger(MinioInputStreamTest.class.getName());
-
-    @BeforeAll
-    public static void setUpClass() {
-        MinioFSSuiteTest.init();
-    }
-
-    @BeforeEach
-    public void cleanup() throws Exception {
-        MinioFSSuiteTest.cleanUp();
-    }
 
     @Test
     public void testCreateFile() {
 
         try {
-            Path rw = new Path(MinioFSSuiteTest.getRootPath(), "mistest/file1");
+            Path rw = new Path(getRootPath(), "mistest/file1");
 
             HashFunction sha256 = Hashing.sha256();
             SecureRandom random = new SecureRandom();
-            int partsize = MinioFSSuiteTest.getConf().getInt(MinioFileSystem.MINIO_UPLOAD_PART_SIZE, 0);
+            int partsize = getConf().getInt(MinioFileSystem.MINIO_UPLOAD_PART_SIZE, 0);
             assert partsize != 0;
             byte[] tmpData = new byte[3 << 20];
-            MinioOutputStream mos = new MinioOutputStream(rw, MinioFSSuiteTest.getConf(), partsize);
+            MinioOutputStream mos = new MinioOutputStream(rw, getConf(), partsize);
             Hasher hasher = sha256.newHasher();
             for (int i = 0; i < 3; i++) {
                 random.nextBytes(tmpData);
@@ -63,7 +51,7 @@ public class MinioInputStreamTest {
             mos.close();
             String hashSended = hasher.hash().toString();
 
-            MinioInputStream mis = new MinioInputStream(rw, MinioFSSuiteTest.getConf(), tmpData.length >> 2);
+            MinioInputStream mis = new MinioInputStream(rw, getConf(), tmpData.length >> 2);
             hasher = sha256.newHasher();
             long pos = 0;
             while (true) {

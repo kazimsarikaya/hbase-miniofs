@@ -1,18 +1,7 @@
 /*
-Copyright 2020 Kazım SARIKAYA
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-   http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
  */
 package com.sanaldiyar.hbase.miniofs;
 
@@ -25,17 +14,21 @@ import java.io.IOException;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.platform.runner.JUnitPlatform;
-import org.junit.platform.suite.api.SelectPackages;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ *
+ * @author kazim
+ */
 @RunWith(JUnitPlatform.class)
-@SelectPackages("com.sanaldiyar.hbase.miniofs")
-public class MinioFSSuiteTest {
+public class BaseTestClass {
 
-    private final static Logger logger = LoggerFactory.getLogger(MinioFSSuiteTest.class.getName());
+    private final static Logger logger = LoggerFactory.getLogger(BaseTestClass.class.getName());
 
     private final static MinioUtil minioUtil = MinioUtil.getInstance();
     private static Configuration conf;
@@ -43,7 +36,27 @@ public class MinioFSSuiteTest {
     private static FileSystem fileSystem;
     private static Path rootPath;
 
-    public static void cleanUp() throws Exception {
+    @BeforeAll
+    public static void setUpClass() {
+        try {
+            conf = new Configuration(true);
+            conf.set(MinioFileSystem.MINIO_ROOT, "minio://minioadmin:minioadmin@localhost:9000/test");
+            conf.set(MinioFileSystem.MINIO_STREAM_BUFFER_SIZE, String.valueOf(128 << 10));
+            conf.set(MinioFileSystem.MINIO_UPLOAD_PART_SIZE, String.valueOf(8 << 20));
+
+            minioUtil.setConf(conf);
+
+            rootPath = new Path(conf.get(MinioFileSystem.MINIO_ROOT));
+            fileSystem = rootPath.getFileSystem(conf);
+            fileSystem.setWorkingDirectory(rootPath);
+        } catch (IOException ex) {
+            logger.error("error occured", ex);
+            assert false;
+        }
+    }
+
+    @BeforeEach
+    public void cleanup() throws Exception {
         MinioClient client = MinioClient.builder().
                 endpoint("http://localhost:9000")
                 .credentials("minioadmin", "minioadmin")
@@ -59,25 +72,6 @@ public class MinioFSSuiteTest {
                     .bucket("test")
                     .object(item.objectName())
                     .build());
-        }
-    }
-
-    public static void init() {
-
-        try {
-            conf = new Configuration(true);
-            conf.set(MinioFileSystem.MINIO_ROOT, "minio://minioadmin:minioadmin@localhost:9000/test");
-            conf.set(MinioFileSystem.MINIO_STREAM_BUFFER_SIZE, String.valueOf(128 << 10));
-            conf.set(MinioFileSystem.MINIO_UPLOAD_PART_SIZE, String.valueOf(8 << 20));
-
-            minioUtil.setConf(conf);
-
-            rootPath = new Path(conf.get(MinioFileSystem.MINIO_ROOT));
-            fileSystem = rootPath.getFileSystem(conf);
-            fileSystem.setWorkingDirectory(rootPath);
-        } catch (IOException ex) {
-            logger.error("error occured", ex);
-            assert false;
         }
     }
 

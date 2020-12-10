@@ -20,43 +20,31 @@ import java.io.IOException;
 import java.security.SecureRandom;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.Path;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class MinioOutputStreamTest {
+public class MinioOutputStreamTest extends BaseTestClass {
 
     private final static Logger logger = LoggerFactory.getLogger(MinioOutputStreamTest.class.getName());
-
-    @BeforeAll
-    public static void setUpClass() {
-        MinioFSSuiteTest.init();
-    }
-
-    @BeforeEach
-    public void cleanup() throws Exception {
-        MinioFSSuiteTest.cleanUp();
-    }
 
     @Test
     public void testCreateFile() {
 
         try {
-            Path p = new Path(MinioFSSuiteTest.getRootPath(), "mostest/file1");
+            Path p = new Path(getRootPath(), "mostest/file1");
             SecureRandom random = new SecureRandom();
-            int partsize = MinioFSSuiteTest.getConf().getInt(MinioFileSystem.MINIO_UPLOAD_PART_SIZE, 0);
+            int partsize = getConf().getInt(MinioFileSystem.MINIO_UPLOAD_PART_SIZE, 0);
             assert partsize != 0;
             byte[] tmpData = new byte[3 << 20];
-            try (MinioOutputStream mos = new MinioOutputStream(p, MinioFSSuiteTest.getConf(), partsize)) {
+            try (MinioOutputStream mos = new MinioOutputStream(p, getConf(), partsize)) {
                 for (int i = 0; i < 3; i++) {
                     random.nextBytes(tmpData);
                     mos.write(tmpData);
                 }
             }
 
-            FileStatus fileStatus = MinioFSSuiteTest.getMinioUtil().getFileStatus(p);
+            FileStatus fileStatus = getMinioUtil().getFileStatus(p);
             assert fileStatus.isFile();
             assert fileStatus.getLen() == 9 << 20;
 

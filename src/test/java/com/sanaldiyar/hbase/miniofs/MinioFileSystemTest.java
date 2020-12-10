@@ -22,30 +22,26 @@ import java.net.URISyntaxException;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.Path;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class MinioFileSystemTest {
+@DisplayName("Minio File System Tests")
+public class MinioFileSystemTest extends BaseTestClass {
 
     private final static Logger logger = LoggerFactory.getLogger(MinioFileSystemTest.class.getName());
 
-    @BeforeAll
-    public static void setUpClass() {
-        MinioFSSuiteTest.init();
-    }
-
-    @BeforeEach
-    public void cleanup() throws Exception {
-        MinioFSSuiteTest.cleanUp();
-    }
-
     @Test
+    @DisplayName("Test file system uri setted as configured")
     public void testGetUri() {
         try {
-            assert MinioFSSuiteTest.getFileSystem().getUri().compareTo(new URI(MinioFSSuiteTest.getConf().get(MinioFileSystem.MINIO_ROOT))) == 0;
+            URI atConf = new URI(getConf().get(MinioFileSystem.MINIO_ROOT));
+            URI atFS = getFileSystem().getUri();
+            assert atConf.getScheme().equals(atFS.getScheme());
+            assert atConf.getHost().equals(atFS.getHost());
+            assert atConf.getPort() == atFS.getPort();
+            assert atConf.getPath().equals(atFS.getPath());
         } catch (URISyntaxException ex) {
             logger.error("error occured while checking uri {}", ex);
             assert false;
@@ -53,11 +49,12 @@ public class MinioFileSystemTest {
     }
 
     @Test
+    @DisplayName("Test root path setted as configured")
     public void testRootFileStatus() {
         try {
-            FileStatus f_s = MinioFSSuiteTest.getFileSystem().getFileStatus(MinioFSSuiteTest.getRootPath());
+            FileStatus f_s = getFileSystem().getFileStatus(getRootPath());
             assert f_s.isDirectory();
-            assert f_s.getPath().equals(MinioFSSuiteTest.getRootPath());
+            assert f_s.getPath().equals(getRootPath());
         } catch (IOException ex) {
             logger.error("cannot get status", ex);
             assert false;
@@ -65,14 +62,15 @@ public class MinioFileSystemTest {
     }
 
     @Test
+    @DisplayName("Test create directory")
     public void testCreateDir() {
         try {
-            Path newDir = new Path(MinioFSSuiteTest.getRootPath(), "dir1/subdir1/subdir2");
-            boolean result = MinioFSSuiteTest.getFileSystem().mkdirs(newDir, null);
+            Path newDir = new Path(getRootPath(), "dir1/subdir1/subdir2");
+            boolean result = getFileSystem().mkdirs(newDir, null);
             assert result;
-            FileStatus[] fileStatuses = MinioFSSuiteTest.getFileSystem().listStatus(MinioFSSuiteTest.getRootPath(), (Path path) -> path.toUri().getPath().startsWith("/test/dir1"));
+            FileStatus[] fileStatuses = getFileSystem().listStatus(getRootPath(), (Path path) -> path.toUri().getPath().startsWith("/test/dir1"));
             assert fileStatuses.length == 1;
-            assert MinioFSSuiteTest.getFileSystem().getFileStatus(newDir) != null;
+            assert getFileSystem().getFileStatus(newDir) != null;
 
         } catch (IOException ex) {
             logger.error("cannot create/check dir", ex);
@@ -83,7 +81,7 @@ public class MinioFileSystemTest {
     @Test
     public void testAppendFile() {
         try {
-            MinioFSSuiteTest.getFileSystem().append(new Path("dummy"));
+            getFileSystem().append(new Path("dummy"));
             assert false;
         } catch (IOException ex) {
             logger.error("test failed", ex);
@@ -96,7 +94,7 @@ public class MinioFileSystemTest {
     @Test
     public void testDeleteNonExistedPath() {
         try {
-            MinioFSSuiteTest.getFileSystem().delete(new Path("nonexists-delete"), true);
+            getFileSystem().delete(new Path("nonexists-delete"), true);
             assert true;
         } catch (IOException ex) {
             logger.error("test failed", ex);
@@ -107,7 +105,7 @@ public class MinioFileSystemTest {
     @Test
     public void testCreateFile() {
         try {
-            FSDataOutputStream os = MinioFSSuiteTest.getFileSystem().create(new Path(MinioFSSuiteTest.getRootPath(), "cftest/file1"));
+            FSDataOutputStream os = getFileSystem().create(new Path(getRootPath(), "cftest/file1"));
             os.close();
             assert true;
         } catch (IOException ex) {
@@ -119,10 +117,10 @@ public class MinioFileSystemTest {
     @Test
     public void testCreateFileFailed() {
         try {
-            FSDataOutputStream os = MinioFSSuiteTest.getFileSystem().create(new Path(MinioFSSuiteTest.getRootPath(), "cftest-failed/file1"));
+            FSDataOutputStream os = getFileSystem().create(new Path(getRootPath(), "cftest-failed/file1"));
             os.close();
             assert true;
-            FSDataOutputStream os2 = MinioFSSuiteTest.getFileSystem().create(new Path(MinioFSSuiteTest.getRootPath(), "cftest-failed/file1/failed"));
+            FSDataOutputStream os2 = getFileSystem().create(new Path(getRootPath(), "cftest-failed/file1/failed"));
             os2.close();
             assert false;
         } catch (IOException ex) {
@@ -133,11 +131,11 @@ public class MinioFileSystemTest {
     @Test
     public void testCreateFileFailedNO() {
         try {
-            Path path = new Path(MinioFSSuiteTest.getRootPath(), "cftest-failed/file2");
-            FSDataOutputStream os = MinioFSSuiteTest.getFileSystem().create(path, false, 128 << 10);
+            Path path = new Path(getRootPath(), "cftest-failed/file2");
+            FSDataOutputStream os = getFileSystem().create(path, false, 128 << 10);
             os.close();
             assert true;
-            FSDataOutputStream os2 = MinioFSSuiteTest.getFileSystem().create(path, false, 128 << 10);
+            FSDataOutputStream os2 = getFileSystem().create(path, false, 128 << 10);
             os2.close();
             assert false;
         } catch (IOException ex) {
@@ -148,9 +146,9 @@ public class MinioFileSystemTest {
     @Test
     public void testCreateNRFile() {
         try {
-            Path path = new Path(MinioFSSuiteTest.getRootPath(), "cftestnr/file1");
-            MinioFSSuiteTest.getFileSystem().mkdirs(new Path(MinioFSSuiteTest.getRootPath(), "cftestnr"));
-            FSDataOutputStream os = MinioFSSuiteTest.getFileSystem().createNonRecursive(path, true, 0, (short) 0, 0, null);
+            Path path = new Path(getRootPath(), "cftestnr/file1");
+            getFileSystem().mkdirs(new Path(getRootPath(), "cftestnr"));
+            FSDataOutputStream os = getFileSystem().createNonRecursive(path, true, 0, (short) 0, 0, null);
             os.close();
             assert true;
         } catch (IOException ex) {
@@ -162,7 +160,7 @@ public class MinioFileSystemTest {
     @Test
     public void testCreateNRFileFailed() {
         try {
-            FSDataOutputStream os = MinioFSSuiteTest.getFileSystem().createNonRecursive(new Path(MinioFSSuiteTest.getRootPath(), "cftestnr-failed/file1"), true, 0, (short) 0, 0, null);
+            FSDataOutputStream os = getFileSystem().createNonRecursive(new Path(getRootPath(), "cftestnr-failed/file1"), true, 0, (short) 0, 0, null);
             os.close();
             assert false;
         } catch (IOException ex) {
@@ -172,16 +170,16 @@ public class MinioFileSystemTest {
 
     @Test
     public void testQualifiedRootPath() {
-        Path path = new Path(MinioFSSuiteTest.getRootPath(), "qualified/path");
-        Path qpath = path.makeQualified(MinioFSSuiteTest.getFileSystem().getUri(), MinioFSSuiteTest.getFileSystem().getWorkingDirectory());
+        Path path = new Path(getRootPath(), "qualified/path");
+        Path qpath = path.makeQualified(getFileSystem().getUri(), getFileSystem().getWorkingDirectory());
         assert path.equals(qpath);
     }
 
     @Test
     public void testRemoveRootFromPath() {
-        Path path = new Path(MinioFSSuiteTest.getRootPath(), "qualified/toremove/path");
-        Path rootPath = new Path(MinioFSSuiteTest.getRootPath(), "qualified/toremove/");
-        Path qpath = rootPath.makeQualified(MinioFSSuiteTest.getFileSystem().getUri(), MinioFSSuiteTest.getFileSystem().getWorkingDirectory());
+        Path path = new Path(getRootPath(), "qualified/toremove/path");
+        Path rootPath = new Path(getRootPath(), "qualified/toremove/");
+        Path qpath = rootPath.makeQualified(getFileSystem().getUri(), getFileSystem().getWorkingDirectory());
 
         String strPath = path.toString();
         String remStrPath = strPath.substring(qpath.toString().length() + 1);
@@ -191,13 +189,13 @@ public class MinioFileSystemTest {
     @Test
     public void testFSRemoveFromPath() {
         try {
-            Path path = new Path(MinioFSSuiteTest.getRootPath(), "qualified/toremove/path");
-            Path rootPath = new Path(MinioFSSuiteTest.getRootPath(), "qualified/toremove/");
-            Path qpath = rootPath.makeQualified(MinioFSSuiteTest.getFileSystem().getUri(), MinioFSSuiteTest.getFileSystem().getWorkingDirectory());
-            assert MinioFSSuiteTest.getFileSystem().mkdirs(path, null);
+            Path path = new Path(getRootPath(), "qualified/toremove/path");
+            Path rootPath = new Path(getRootPath(), "qualified/toremove/");
+            Path qpath = rootPath.makeQualified(getFileSystem().getUri(), getFileSystem().getWorkingDirectory());
+            assert getFileSystem().mkdirs(path, null);
 
-            FileStatus fsPath = MinioFSSuiteTest.getFileSystem().getFileStatus(path);
-            FileStatus fsRootPath = MinioFSSuiteTest.getFileSystem().getFileStatus(rootPath);
+            FileStatus fsPath = getFileSystem().getFileStatus(path);
+            FileStatus fsRootPath = getFileSystem().getFileStatus(rootPath);
 
             String strPath = fsPath.getPath().toString();
             String remStrPath = strPath.substring(qpath.toString().length() + 1);
@@ -206,7 +204,7 @@ public class MinioFileSystemTest {
             remStrPath = strPath.substring(fsRootPath.getPath().toString().length() + 1);
             assert remStrPath.equals("path");
 
-            fsRootPath = MinioFSSuiteTest.getFileSystem().getFileStatus(new Path("qualified/toremove/"));
+            fsRootPath = getFileSystem().getFileStatus(new Path("qualified/toremove/"));
             remStrPath = strPath.substring(fsRootPath.getPath().toString().length() + 1);
             logger.debug("rempath {}", remStrPath);
             assert remStrPath.equals("path");
