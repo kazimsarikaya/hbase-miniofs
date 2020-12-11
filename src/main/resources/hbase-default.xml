@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+
+<configuration>
+    
+    <property>
+        <name>hbase.defaults.for.version</name>
+        <value>2.3.3</value>
+    </property>
+
+    <property>
+        <name>hbase.master.infoserver.redirect</name>
+        <value>false</value>
+    </property>
+    
+    <property>
+        <name>hbase.regionserver.hostname</name>
+        <value></value>
+    </property>
+    <property>
+        <name>hbase.master.hostname</name>
+        <value></value>
+    </property>
+    
+    <property>
+        <name>hbase.master.logcleaner.plugins</name>
+        <value>org.apache.hadoop.hbase.master.cleaner.TimeToLiveLogCleaner,org.apache.hadoop.hbase.master.cleaner.TimeToLiveProcedureWALCleaner,org.apache.hadoop.hbase.master.cleaner.TimeToLiveMasterLocalStoreWALCleaner</value>
+    </property>
+    <property>
+        <name>hbase.master.logcleaner.ttl</name>
+        <value>600000</value>
+    </property>
+    <property>
+        <name>hbase.fs.shutdown.hook.wait</name>
+        <value>300000</value>
+    </property>
+</configuration>

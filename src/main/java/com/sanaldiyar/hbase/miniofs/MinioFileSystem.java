@@ -23,8 +23,7 @@ import java.util.Collections;
 import java.util.EnumSet;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.CreateFlag;
@@ -37,7 +36,7 @@ import org.apache.hadoop.fs.ParentNotDirectoryException;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.util.Progressable;
-import org.apache.hadoop.util.ShutdownHookManager;
+import org.apache.hadoop.util.concurrent.HadoopExecutors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,12 +44,10 @@ public class MinioFileSystem extends FileSystem {
 
     public final static String MINIO_STREAM_BUFFER_SIZE = "fs.minio.stream-buffer.size";
     public final static String MINIO_UPLOAD_PART_SIZE = "fs.minio.upload-part.size";
+    public final static String MINIO_BUFFER_SIZE = "fs.minio.buffer.size";
     public final static String MINIO_ROOT = "hbase.rootdir";
     public final static int MINIO_DEFAULT_PART_SIZE = 5 << 20;
     public final static int MINIO_DEFAULT_BUFFER_SIZE = 128 << 10;
-    public final static String MINIO_DEFAULT_SHUTDOWN = "fs.minio.shutdown.timeout";
-    public final static long MINIO_DEFAULT_SHUTDOWN_TIMEOUT = 5;
-    public final static TimeUnit MINIO_DEFAULT_SHUTDOWN_TIMEOUT_UNIT = TimeUnit.MINUTES;
 
     private final static Logger logger = LoggerFactory.getLogger(MinioFileSystem.class.getName());
 
@@ -80,8 +77,6 @@ public class MinioFileSystem extends FileSystem {
         this.uri = minioUtil.getUri();
         this.workingDir = new Path(uri);
         logger.debug("workingdir {}", workingDir);
-        long timeout = conf.getTimeDuration(MINIO_DEFAULT_SHUTDOWN, MINIO_DEFAULT_SHUTDOWN_TIMEOUT, MINIO_DEFAULT_SHUTDOWN_TIMEOUT_UNIT, MINIO_DEFAULT_SHUTDOWN_TIMEOUT_UNIT);
-        ShutdownHookManager.get().addShutdownHook(new Thread(new ShutdownHook(this)), SHUTDOWN_HOOK_PRIORITY, timeout, TimeUnit.MINUTES);
         setConf(conf);
         super.initialize(name, conf);
     }
@@ -252,15 +247,41 @@ public class MinioFileSystem extends FileSystem {
         return new Path(workingDir, path);
     }
 
-    public synchronized void internalClose() throws IOException {
+    @Override
+    public synchronized void close() throws IOException {
+        if (closed) {
+            return;
+        }
+        super.close();
+        logger.info("closing file system {}, probably opened output stream count {}", this, getOutputStreams().size());
+        final Counter counter = new Counter();
+        ExecutorService closeExecutor = HadoopExecutors.newFixedThreadPool(getOutputStreams().size() + 1); // +1 for verfing not 0 count
+        getOutputStreams().stream().filter(os -> (!os.isClosed())).forEachOrdered(os -> {
+            closeExecutor.execute(() -> {
+                try {
+                    logger.debug("closing output steam {}", os.toString());
+                    os.close();
+                    counter.increment();
+                    logger.debug("output steam {} closed", os.toString());
 
+                } catch (IOException e) {
+                    logger.error("error at closing output stream {} , error: {}", os.toString(), e);
+                }
+            });
+        });
+        closeExecutor.shutdown();
+        try {
+            if (!closeExecutor.awaitTermination(5, TimeUnit.MINUTES)) {
+                closeExecutor.shutdownNow();
+            }
+        } catch (InterruptedException ex) {
+            logger.error("cannot wait for shutdown", ex);
+            closeExecutor.shutdownNow();
+        }
+        closed = true;
+        logger.info("file system {} closed with try to close {} output steams", this, counter.getValue());
     }
 
-//    @Override
-//    public void close() throws IOException {
-//        internalClose();
-//        super.close();
-//    }
     public boolean isClosed() {
         return closed;
     }
@@ -270,44 +291,16 @@ public class MinioFileSystem extends FileSystem {
         throw new UnsupportedOperationException("Minio File System does not support append");
     }
 
-    static class ShutdownHook implements Runnable {
+    static class Counter {
 
-        private final MinioFileSystem fileSystem;
-        private final static Executor executor = Executors.newFixedThreadPool(10);
+        private int value = 0;
 
-        public ShutdownHook(MinioFileSystem fileSystem) {
-            this.fileSystem = fileSystem;
+        public synchronized void increment() {
+            value++;
         }
 
-        @Override
-        public void run() {
-            logger.debug("closing file system {}", this.toString());
-            for (var os : fileSystem.getOutputStreams()) {
-                executor.execute(() -> {
-                    try {
-                        if (fileSystem.isClosed()) {
-                            return;
-                        }
-                        if (!os.isClosed()) {
-                            try {
-                                logger.debug("closing output steam {}", os.toString());
-                                os.close();
-                                logger.debug("output steam {} closed", os.toString());
-
-                            } catch (IOException e) {
-                                logger.error("error at closing output stream {} , error: {}", os.toString(), e);
-                                throw e;
-                            }
-                        }
-
-                    } catch (IOException ex) {
-                        logger.error("error at shutdown", ex);
-                    }
-                });
-            }
-            fileSystem.closed = true;
-            logger.debug("file system {} closed", this.toString());
-
+        public int getValue() {
+            return value;
         }
 
     }

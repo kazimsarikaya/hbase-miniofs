@@ -23,14 +23,26 @@ import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.master.HMaster;
 import org.apache.hadoop.hbase.regionserver.HRegionServer;
+import org.apache.hadoop.hbase.util.ShutdownHookManager;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.impl.Log4jContextFactory;
+import org.apache.logging.log4j.core.util.DefaultShutdownCallbackRegistry;
+import org.apache.logging.log4j.spi.LoggerContextFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class HBaseMain {
 
-    private final static Logger logger = LoggerFactory.getLogger(HBaseMain.class.getName());
-
     public static void main(String[] args) {
+
+        final LoggerContextFactory factory = LogManager.getFactory();
+
+        if (factory instanceof Log4jContextFactory) {
+            Log4jContextFactory contextFactory = (Log4jContextFactory) factory;
+
+            ((DefaultShutdownCallbackRegistry) contextFactory.getShutdownCallbackRegistry()).stop();
+        }
+        Logger logger = LoggerFactory.getLogger(HBaseMain.class.getName());
 
         Configuration conf = HBaseConfiguration.create();
         conf.set(MinioFileSystem.MINIO_ROOT, "minio://minioadmin:minioadmin@127.0.0.1:9000/hbase"); // minio://<host:port>/<bucket>
@@ -39,7 +51,16 @@ public class HBaseMain {
         conf.setBoolean("hbase.unsafe.stream.capability.enforce", false);
         conf.setInt("hbase.master.namespace.init.timeout", 1000 * 60 * 60);
         conf.setInt("io.file.buffer.size", MinioFileSystem.MINIO_DEFAULT_BUFFER_SIZE);
-        conf.setTimeDuration(MinioFileSystem.MINIO_DEFAULT_SHUTDOWN, 5, MinioFileSystem.MINIO_DEFAULT_SHUTDOWN_TIMEOUT_UNIT);
+
+        System.setProperty(MinioFileSystem.MINIO_BUFFER_SIZE, String.valueOf(MinioFileSystem.MINIO_DEFAULT_BUFFER_SIZE));
+
+        ShutdownHookManager.affixShutdownHook(new Thread() {
+            @Override
+            public void run() {
+                Runtime.getRuntime().halt(0); //the fucking reaper of the fucking dangling threads.
+            }
+
+        }, -1); // -1 for the last one.
 
         if (args.length < 1) {
             logger.error("master/region type param should be given");

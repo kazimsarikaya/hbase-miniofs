@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+
+<configuration>
+
+    <property>
+        <name>hadoop.tmp.dir</name>
+        <value>/tmp/hadoop-${user.name}</value>
+        <description>A base for other temporary directories.</description>
+    </property>
+    <property>
+        <name>io.file.buffer.size</name>
+        <value>131072</value>
+    </property>
+    
+    <property>
+        <name>hadoop.prometheus.endpoint.enabled</name>
+        <value>true</value>
+    </property>
+    
+    <property>
+        <name>hadoop.service.shutdown.timeout</name>
+        <value>5m</value>
+    </property>
+</configuration>
