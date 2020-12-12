@@ -21,6 +21,7 @@ import com.google.common.hash.Hasher;
 import com.google.common.hash.Hashing;
 import java.io.IOException;
 import java.security.SecureRandom;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
@@ -34,6 +35,7 @@ public class MinioInputStreamTest extends BaseTestClass {
     public void testCreateFile() {
 
         try {
+            FileSystem.Statistics statistics = new FileSystem.Statistics("minio");
             Path rw = new Path(getRootPath(), "mistest/file1");
 
             HashFunction sha256 = Hashing.sha256();
@@ -41,7 +43,7 @@ public class MinioInputStreamTest extends BaseTestClass {
             int partsize = getConf().getInt(MinioFileSystem.MINIO_UPLOAD_PART_SIZE, 0);
             assert partsize != 0;
             byte[] tmpData = new byte[3 << 20];
-            MinioOutputStream mos = new MinioOutputStream(rw, getConf(), partsize);
+            MinioOutputStream mos = new MinioOutputStream(rw, getConf(), partsize, statistics);
             Hasher hasher = sha256.newHasher();
             for (int i = 0; i < 3; i++) {
                 random.nextBytes(tmpData);
@@ -51,7 +53,7 @@ public class MinioInputStreamTest extends BaseTestClass {
             mos.close();
             String hashSended = hasher.hash().toString();
 
-            MinioInputStream mis = new MinioInputStream(rw, getConf(), tmpData.length >> 2);
+            MinioInputStream mis = new MinioInputStream(rw, getConf(), tmpData.length >> 2, statistics);
             hasher = sha256.newHasher();
             long pos = 0;
             while (true) {

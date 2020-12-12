@@ -106,7 +106,7 @@ public class MinioFileSystem extends FileSystem {
         } catch (FileNotFoundException ex) {
             throw ex;
         }
-        MinioInputStream mis = new MinioInputStream(path, getConf(), getDefaultBlockSize(path));
+        MinioInputStream mis = new MinioInputStream(path, getConf(), getDefaultBlockSize(path), statistics);
         logger.debug("file {} opened with buffer {}", path, bufferSize);
         return new FSDataInputStream(mis);
     }
@@ -150,7 +150,7 @@ public class MinioFileSystem extends FileSystem {
                 throw new FileAlreadyExistsException(String.format("path already exists %s", path.toString()));
             }
         }
-        MinioOutputStream mos = new MinioOutputStream(path, getConf());
+        MinioOutputStream mos = new MinioOutputStream(path, getConf(), statistics);
         FSDataOutputStream outputStream = new FSDataOutputStream(mos, null);
         outputStreams.add(mos);
         logger.info("new file will be created for {}", path);

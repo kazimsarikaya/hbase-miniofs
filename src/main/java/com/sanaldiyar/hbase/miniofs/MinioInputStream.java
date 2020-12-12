@@ -22,6 +22,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.CanUnbuffer;
 import org.apache.hadoop.fs.FSInputStream;
 import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,8 +43,9 @@ public class MinioInputStream extends FSInputStream implements CanUnbuffer {
     private final Configuration conf;
     private final String key;
     private boolean closed = false;
+    FileSystem.Statistics statistics;
 
-    public MinioInputStream(Path path, Configuration conf, long bufferSize) throws IOException {
+    public MinioInputStream(Path path, Configuration conf, long bufferSize, FileSystem.Statistics statistics) throws IOException {
         this.key = minioUtil.getPrefix(path);
         List<String> locks = MinioFileSystem.getLocks();
         synchronized (locks) {
@@ -58,6 +60,7 @@ public class MinioInputStream extends FSInputStream implements CanUnbuffer {
         FileStatus fs = minioUtil.getFileStatus(path);
         filesize = fs.getLen();
         fillBuffer(0);
+        this.statistics = statistics;
         logger.info("file {} opened", path);
     }
 
@@ -110,19 +113,9 @@ public class MinioInputStream extends FSInputStream implements CanUnbuffer {
 
     @Override
     public synchronized int read() throws IOException {
-        if (position == filesize) {
-            return -1;
-        }
-        if (bufferPosition == buffer.length) {
-            fillBuffer(position);
-        }
-        if (bufferLength == 0) {
-            return -1;
-        }
-        int data = buffer[bufferPosition];
-        position++;
-        bufferPosition++;
-        return data;
+        byte[] data = new byte[1];
+        read(data, 0, 1);
+        return data[0];
     }
 
     @Override
@@ -172,6 +165,8 @@ public class MinioInputStream extends FSInputStream implements CanUnbuffer {
             readed += maxRead;
             position += maxRead;
         }
+        statistics.incrementBytesRead(readed);
+        statistics.incrementReadOps(1);
         logger.trace("data readed from file {} to offset {} with len {} requested len {} new position {} old_position {}", path.toUri().getPath(), off_backup, readed, len_backup, position, pos_backup);
         if (readed == 0) {
             return -1;

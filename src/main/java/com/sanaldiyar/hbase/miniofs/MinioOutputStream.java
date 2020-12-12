@@ -28,6 +28,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.MultipartUploader;
 import org.apache.hadoop.fs.PartHandle;
 import org.apache.hadoop.fs.Path;
@@ -55,8 +56,9 @@ public class MinioOutputStream extends OutputStream {
     private long totalWriten = 0;
     private final String key;
     private MinioFileSystem fileSystem;
+    private FileSystem.Statistics statistics;
 
-    public MinioOutputStream(Path path, Configuration conf) throws IOException {
+    public MinioOutputStream(Path path, Configuration conf, FileSystem.Statistics statistics) throws IOException {
         this.key = minioUtil.getPrefix(path);
         List<String> locks = MinioFileSystem.getLocks();
         synchronized (locks) {
@@ -73,11 +75,12 @@ public class MinioOutputStream extends OutputStream {
         this.closed = false;
         this.partSize = conf.getInt(MinioFileSystem.MINIO_UPLOAD_PART_SIZE, MinioFileSystem.MINIO_DEFAULT_PART_SIZE);
         fileSystem = (MinioFileSystem) path.getFileSystem(conf);
+        this.statistics = statistics;
         logger.debug("file {} opened", path);
     }
 
-    public MinioOutputStream(Path path, Configuration conf, int partSize) throws IOException {
-        this(path, conf);
+    public MinioOutputStream(Path path, Configuration conf, int partSize, FileSystem.Statistics statistics) throws IOException {
+        this(path, conf, statistics);
         this.partSize = partSize;
     }
 
@@ -114,10 +117,13 @@ public class MinioOutputStream extends OutputStream {
             uploadPart(false);
             offset += bytesCW;
             len -= bytesCW;
+            statistics.incrementBytesWritten(bytesCW);
         }
         backendStream.write(buffer, offset, len);
         backendOffset += len;
         totalWriten += len;
+        statistics.incrementWriteOps(1);
+        statistics.incrementBytesWritten(len);
         logger.trace("{} bytes of data writen to the backend file {} from offset {} new position {} for path {}", len, backendFile.toPath(), offset, totalWriten, path);
     }
 

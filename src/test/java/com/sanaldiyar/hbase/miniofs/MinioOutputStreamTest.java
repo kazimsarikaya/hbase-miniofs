@@ -19,6 +19,7 @@ package com.sanaldiyar.hbase.miniofs;
 import java.io.IOException;
 import java.security.SecureRandom;
 import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
@@ -32,12 +33,13 @@ public class MinioOutputStreamTest extends BaseTestClass {
     public void testCreateFile() {
 
         try {
+            FileSystem.Statistics statistics = new FileSystem.Statistics("minio");
             Path p = new Path(getRootPath(), "mostest/file1");
             SecureRandom random = new SecureRandom();
             int partsize = getConf().getInt(MinioFileSystem.MINIO_UPLOAD_PART_SIZE, 0);
             assert partsize != 0;
             byte[] tmpData = new byte[3 << 20];
-            try (MinioOutputStream mos = new MinioOutputStream(p, getConf(), partsize)) {
+            try (MinioOutputStream mos = new MinioOutputStream(p, getConf(), partsize, statistics)) {
                 for (int i = 0; i < 3; i++) {
                     random.nextBytes(tmpData);
                     mos.write(tmpData);
