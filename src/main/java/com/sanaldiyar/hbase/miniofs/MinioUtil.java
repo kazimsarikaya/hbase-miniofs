@@ -52,6 +52,7 @@ import java.util.Stack;
 import org.apache.hadoop.conf.Configurable;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.ParentNotDirectoryException;
 import org.apache.hadoop.fs.Path;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -302,7 +303,7 @@ public class MinioUtil implements Configurable {
             try {
                 FileStatus fs = getFileStatus(tmpPath);
                 if (!fs.isDirectory()) {
-                    throw new IOException(String.format("parent is not a folder: {}", orig_path.toUri().getPath()));
+                    throw new ParentNotDirectoryException(String.format("parent is not a folder: {}", orig_path.toUri().getPath()));
                 }
             } catch (FileNotFoundException nfexp) {
                 try {
