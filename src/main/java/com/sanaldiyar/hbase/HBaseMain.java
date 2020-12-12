@@ -47,13 +47,6 @@ public class HBaseMain {
         Configuration conf = HBaseConfiguration.create();
         conf.set(MinioFileSystem.MINIO_ROOT, "minio://minioadmin:minioadmin@127.0.0.1:9000/hbase"); // minio://<host:port>/<bucket>
 
-        conf.setBoolean("hbase.cluster.distributed", true);
-        conf.setBoolean("hbase.unsafe.stream.capability.enforce", false);
-        conf.setInt("hbase.master.namespace.init.timeout", 1000 * 60 * 60);
-        conf.setInt("io.file.buffer.size", MinioFileSystem.MINIO_DEFAULT_BUFFER_SIZE);
-
-        System.setProperty(MinioFileSystem.MINIO_BUFFER_SIZE, String.valueOf(MinioFileSystem.MINIO_DEFAULT_BUFFER_SIZE));
-
         ShutdownHookManager.affixShutdownHook(new Thread() {
             @Override
             public void run() {

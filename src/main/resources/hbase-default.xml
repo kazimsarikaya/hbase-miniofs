@@ -34,4 +34,16 @@
         <name>hbase.fs.shutdown.hook.wait</name>
         <value>300000</value>
     </property>
+    <property>
+        <name>hbase.master.namespace.init.timeout</name>
+        <value>3600000</value>
+    </property>
+    <property>
+        <name>hbase.cluster.distributed</name>
+        <value>true</value>
+    </property>
+    <property>
+        <name>hbase.unsafe.stream.capability.enforce</name>
+        <value>false</value>
+    </property>
 </configuration>
